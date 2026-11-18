@@ -11,6 +11,7 @@ How this Windows 11 laptop's dev environment is configured: VS Code, PowerShell,
 | Aliases | `k`, `kctx` | `k`, `kctx` |
 | Herdr | — | 0.9.5 (`~/.local/bin`) |
 | gcloud | 594.0.0 (user installer, `%LOCALAPPDATA%\Google\Cloud SDK`) | 594.0.0 (`google-cloud-cli` apt package) |
+| GKE auth plugin | gcloud component | apt package |
 | Cluster | k3d `gke-prep-cluster` at `127.0.0.1:6550` | k3d `gke-prep-cluster` at `0.0.0.0:6550` |
 
 ---
@@ -314,16 +315,37 @@ gcloud init
 - With an apt install, `gcloud components install` is disabled. Extras are separate apt packages, and updates come through `sudo apt-get update && sudo apt-get upgrade`.
 - Sign-in links open in Windows Chrome through the `BROWSER` setting from section 7.
 
-### Not installed yet: GKE auth plugin
+### GKE auth plugin
 
-`kubectl` needs `gke-gcloud-auth-plugin` to connect to GKE clusters (local k3d doesn't need it):
+`kubectl` needs `gke-gcloud-auth-plugin` to connect to GKE clusters (local k3d doesn't need it). Installed on both sides.
+
+**Windows:** installed as a gcloud component to `…\google-cloud-sdk\bin\gke-gcloud-auth-plugin.exe`, which is already on PATH.
 
 ```powershell
 gcloud components install gke-gcloud-auth-plugin
+gke-gcloud-auth-plugin --version
 ```
+
+If gcloud stops and prints a `FOR /F … copy-bundled-python` message, it can't update the Python it's running from. In PowerShell, point it at a temporary copy and rerun the install:
+
+```powershell
+$env:CLOUDSDK_PYTHON = gcloud components copy-bundled-python
+gcloud components install gke-gcloud-auth-plugin
+Remove-Item Env:CLOUDSDK_PYTHON
+```
+
+**WSL:** the `google-cloud-cli-gke-gcloud-auth-plugin` apt package.
 
 ```bash
 sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
+gke-gcloud-auth-plugin --version
+```
+
+**Connecting to a GKE cluster:** fetch credentials on each side. kubectl then uses the plugin automatically.
+
+```bash
+gcloud container clusters get-credentials <cluster> --region <region> --project <project>
+kubectl get nodes
 ```
 
 ## 10. WSL: Herdr

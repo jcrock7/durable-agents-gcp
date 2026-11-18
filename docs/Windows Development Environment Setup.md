@@ -10,6 +10,7 @@ How this Windows 11 laptop's dev environment is configured: VS Code, PowerShell,
 | k9s | v0.51.0 (winget) | v0.51.0 (`~/.local/bin`) |
 | Aliases | `k`, `kctx` | `k`, `kctx` |
 | Herdr | — | 0.9.5 (`~/.local/bin`) |
+| gcloud | 594.0.0 (user installer, `%LOCALAPPDATA%\Google\Cloud SDK`) | 594.0.0 (`google-cloud-cli` apt package) |
 | Cluster | k3d `gke-prep-cluster` at `127.0.0.1:6550` | k3d `gke-prep-cluster` at `0.0.0.0:6550` |
 
 ---
@@ -147,6 +148,19 @@ eval "$(oh-my-posh init bash --config "$POSH_THEMES_PATH/cobalt2.omp.json")"
 
 VS Code's terminal font setting also covers WSL terminals, so the icons render.
 
+### Fix: prompt drawn over command output
+
+When a command's output doesn't end with a newline (for example `curl` printing JSON), bash draws the prompt at the end of that output. The next redraw then paints the prompt over the start of the line. This hook, added right after the `oh-my-posh init` line in `~/.bashrc` (backup: `~/.bashrc.bak-promptsp`), works like zsh: if the cursor isn't at the start of a line, it leaves a dim `%` marker and starts the prompt on a new line.
+
+```bash
+# Start the prompt on a fresh line when the last output had no trailing newline
+# (like zsh PROMPT_SP). Runs after _omp_hook so the exit status is unaffected.
+_prompt_sp() { local c=${COLUMNS:-$(tput cols 2>/dev/null || echo 80)}; printf "\e[2m%%\e[0m%*s\r" "$((c - 1))" ""; }
+PROMPT_COMMAND+=(_prompt_sp)
+```
+
+It must come **after** the Oh My Posh line. Oh My Posh records the last command's exit status in the first `PROMPT_COMMAND` hook, and this `printf` would reset it.
+
 ## 6. WSL: easy access to Windows repos
 
 | Path | Points to | Use for |
@@ -266,7 +280,53 @@ fi
 
 Reload an open terminal with `source ~/.bashrc`.
 
-## 9. WSL: Herdr
+## 9. Google Cloud CLI (gcloud)
+
+Both sides run Google Cloud CLI 594.0.0, installed and signed in separately. Each has its own configuration, so `gcloud auth login` and `gcloud config set project …` must be done on each side.
+
+### Windows
+
+Installed per user with Google's Cloud SDK installer to `%LOCALAPPDATA%\Google\Cloud SDK\google-cloud-sdk`. The installer adds `…\google-cloud-sdk\bin` to the **user** PATH, and winget recognizes it as `Google.CloudSDK`.
+
+```powershell
+winget install Google.CloudSDK --source winget
+# open a new terminal so PATH updates, then:
+gcloud init
+gcloud components list --only-local-state
+```
+
+Installed components: `core`, `bq`, `gsutil`, `gcloud-crc32c`. Add more with `gcloud components install <id>` and update with `gcloud components update`.
+
+### WSL (Ubuntu)
+
+Installed from Google's apt repository as the `google-cloud-cli` package. gcloud lives in `/usr/lib/google-cloud-sdk`, with `/usr/bin/gcloud` pointing to it.
+
+```bash
+sudo apt-get install -y apt-transport-https ca-certificates gnupg curl
+curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+  | sudo tee /etc/apt/sources.list.d/google-cloud-sdk.list
+sudo apt-get update && sudo apt-get install -y google-cloud-cli
+gcloud init
+```
+
+- Installed components: `core`, `bq`, `gsutil`, `gcloud-crc32c`, `alpha`, `beta`, `preview`, `bundled-python3-unix`.
+- With an apt install, `gcloud components install` is disabled. Extras are separate apt packages, and updates come through `sudo apt-get update && sudo apt-get upgrade`.
+- Sign-in links open in Windows Chrome through the `BROWSER` setting from section 7.
+
+### Not installed yet: GKE auth plugin
+
+`kubectl` needs `gke-gcloud-auth-plugin` to connect to GKE clusters (local k3d doesn't need it):
+
+```powershell
+gcloud components install gke-gcloud-auth-plugin
+```
+
+```bash
+sudo apt-get install -y google-cloud-cli-gke-gcloud-auth-plugin
+```
+
+## 10. WSL: Herdr
 
 [Herdr](https://herdr.dev/docs/install/) is a terminal app for running AI coding agents. Its official installer puts the binary in `~/.local/bin` and checks the download's checksum. It doesn't use sudo or edit shell files.
 

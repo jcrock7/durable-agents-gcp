@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+  labels:
+    app.kubernetes.io/name: litellm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: litellm
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: litellm
+    spec:
+      serviceAccountName: litellm # on GKE: Workload Identity -> wl-litellm (Vertex AI user)
+      # LiteLLM's official non-root image runs as "nobody" (65534) with HOME=/app.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: litellm
+          # Pinned by digest: the gateway sits on the path to all model spend (ADR-0005).
+          image: ghcr.io/berriai/litellm-non_root:v1.106.6@sha256:6363e53f135dafbf4a68fac25f77aec3f2b99be37665e8c5f623a952637c220b
+          args: ["--config", "/app/config/config.yaml", "--port", "4000", "--num_workers", "1"]
+          envFrom:
+            - configMapRef:
+                name: litellm-env
+          env:
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm
+                  key: master-key
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: litellm
+                  key: database-url
+          ports:
+            - name: http
+              containerPort: 4000
+          # First start runs database migrations; give it up to 5 minutes.
+          startupProbe:
+            httpGet:
+              path: /health/liveliness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: http
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: http
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 768Mi
+            limits:
+              memory: 1536Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: litellm-config
+        - name: tmp
+          emptyDir: {}

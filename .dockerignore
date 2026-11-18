@@ -1,0 +1,14 @@
+# Image builds only need the TypeScript workspace.
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.github
+.env
+.env.*
+docs
+platform
+scripts
+**/*.md
+**/test
+**/evals

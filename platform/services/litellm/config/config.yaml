@@ -1,0 +1,52 @@
+# LiteLLM gateway configuration (ADR-0005, ADR-0012).
+# Values written os.environ/NAME are read from the pod environment (ConfigMap litellm-env and
+# Secret litellm). Model IDs are set in litellm-env so they can change without editing this file.
+
+model_list:
+  - model_name: fast
+    litellm_params:
+      model: os.environ/LITELLM_FAST_MODEL
+      vertex_project: os.environ/VERTEX_PROJECT
+      vertex_location: os.environ/VERTEX_LOCATION
+      safety_settings: &safety
+        - { category: HARM_CATEGORY_HARASSMENT, threshold: BLOCK_MEDIUM_AND_ABOVE }
+        - { category: HARM_CATEGORY_HATE_SPEECH, threshold: BLOCK_MEDIUM_AND_ABOVE }
+        - { category: HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: BLOCK_MEDIUM_AND_ABOVE }
+        - { category: HARM_CATEGORY_DANGEROUS_CONTENT, threshold: BLOCK_MEDIUM_AND_ABOVE }
+  - model_name: smart
+    litellm_params:
+      model: os.environ/LITELLM_SMART_MODEL
+      vertex_project: os.environ/VERTEX_PROJECT
+      vertex_location: os.environ/VERTEX_LOCATION
+      safety_settings: *safety
+
+router_settings:
+  # If "smart" fails after retries, answer with "fast" rather than failing the activity.
+  fallbacks:
+    - smart: [fast]
+  num_retries: 2
+  timeout: 120
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 120
+
+guardrails:
+  # Screens untrusted input (user and tool messages) for prompt injection with a cheap model.
+  # Implementation: prompt_injection.py in this folder.
+  - guardrail_name: prompt-injection
+    litellm_params:
+      guardrail: prompt_injection.PromptInjectionCheck
+      mode: pre_call
+      default_on: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: false
+  # Admin UI: sign in only as a database user ("ui-admin", created by the apply scripts),
+  # never with the shared master key.
+  disable_env_credential_login: true
+  # Clients reach LiteLLM directly (port-forward, or in-cluster from the worker), not through a
+  # proxy, so failed UI sign-ins are also limited per source address.
+  trusted_proxy_ranges: []

@@ -1,0 +1,10 @@
+packages:
+  - packages/*
+  - apps/*
+  - agents/*/*        # agents/<industry>/<agent>
+
+# Dependency install scripts are blocked unless listed here. Neither is needed: swc ships a
+# prebuilt binary (its script only checks it) and protobufjs's script is for its CLI.
+allowBuilds:
+  "@swc/core": false
+  protobufjs: false

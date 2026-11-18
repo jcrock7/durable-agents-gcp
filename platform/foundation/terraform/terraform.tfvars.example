@@ -1,0 +1,6 @@
+# Example only. scripts/gcp/foundation.sh sets these from .env as TF_VAR_* variables.
+
+project_id        = "your-project-id"
+region            = "us-central1"
+iap_members       = ["user:you@example.com"]
+github_repository = "your-github-user/durable-agents-gcp"

@@ -1,0 +1,37 @@
+# Load balancer settings for the API backend.
+
+# Health check on the API's /healthz endpoint.
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: api
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /healthz
+  targetRef:
+    group: ""
+    kind: Service
+    name: api
+---
+# Identity-Aware Proxy: every request needs a Google sign-in from someone in IAP_MEMBERS
+# (granted by the foundation Terraform). The OAuth client secret lives in the Kubernetes
+# Secret "iap-oauth-client" (key "key"), created by scripts/gke/apply-k8s.sh.
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: api
+spec:
+  default:
+    timeoutSec: 300 # agent runs stream progress; allow long responses
+    iap:
+      enabled: true
+      clientID: IAP_OAUTH_CLIENT_ID # replaced from cluster.env
+      oauth2ClientSecret:
+        name: iap-oauth-client
+  targetRef:
+    group: ""
+    kind: Service
+    name: api

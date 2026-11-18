@@ -1,0 +1,102 @@
+# Network policies: deny all inbound traffic in the namespace, then allow only the paths in the
+# architecture. Outbound traffic (DNS, Google APIs, image pulls) stays open.
+#
+# Label conventions every workload must follow:
+#   app.kubernetes.io/name: api | worker | litellm | temporal
+#   cnpg.io/cluster: agents-pg            (set by CloudNativePG on Postgres pods)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# Public traffic reaches only the API: from Google load balancers and health checks on GKE,
+# and from Traefik (kube-system) on k3d.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-from-edge
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - ipBlock:
+            cidr: 35.191.0.0/16
+        - ipBlock:
+            cidr: 130.211.0.0/22
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+---
+# Temporal frontend: the API starts and signals workflows, the worker polls task queues.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: temporal-from-app
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: temporal
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [api, worker]
+      ports:
+        - port: 7233
+          protocol: TCP
+---
+# LiteLLM: only the agent worker calls models.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: litellm-from-worker
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: litellm
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: worker
+      ports:
+        - port: 4000
+          protocol: TCP
+---
+# Postgres: app workloads on 5432; replicas and the CloudNativePG operator on any port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-access
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: agents-pg
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [api, worker, litellm]
+      ports:
+        - port: 5432
+          protocol: TCP
+    - from:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: agents-pg
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system

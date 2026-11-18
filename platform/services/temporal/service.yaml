@@ -1,0 +1,20 @@
+# temporal:7233 for the API and worker. The Web UI (8233) is cluster-internal only:
+#   kubectl -n agents port-forward svc/temporal 8233:8233   ->  http://localhost:8233
+apiVersion: v1
+kind: Service
+metadata:
+  name: temporal
+  labels:
+    app.kubernetes.io/name: temporal
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: temporal
+  ports:
+    - name: grpc
+      port: 7233
+      targetPort: grpc
+      appProtocol: grpc
+    - name: ui
+      port: 8233
+      targetPort: ui

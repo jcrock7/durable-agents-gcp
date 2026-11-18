@@ -1,0 +1,9 @@
+# A stand-in "api" (Google's hello-app) so the edge can be tested before the real API exists:
+# Gateway, certificate, IAP sign-in, health checks and network policy.
+# Remove this component from the overlays once apps/api has its own manifests.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - deployment.yaml
+  - service.yaml

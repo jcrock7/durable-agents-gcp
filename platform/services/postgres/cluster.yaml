@@ -1,0 +1,39 @@
+# One Postgres 17 instance managed by CloudNativePG.
+#   database "app"     owner app      (agents, results, pgvector embeddings)
+#   database "litellm" owner litellm  (gateway keys, budgets, spend logs)
+# Services created by the operator: agents-pg-rw (read/write), agents-pg-r, agents-pg-ro.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: agents-pg
+spec:
+  instances: 1
+  # Official CloudNativePG image; the "standard" variant includes pgvector.
+  imageName: ghcr.io/cloudnative-pg/postgresql:17-standard-bookworm@sha256:c2c7d1fe966bf40178504ca282f2ee17e9512115e10144d5a394af5656cccbc2
+
+  storage:
+    size: 5Gi
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+      secret:
+        name: pg-app # kubernetes.io/basic-auth, username "app"
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector;
+
+  managed:
+    roles:
+      - name: litellm
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-litellm # kubernetes.io/basic-auth, username "litellm"

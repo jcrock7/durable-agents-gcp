@@ -1,0 +1,41 @@
+# k3d overlay: Traefik (built into k3s) serves http://localhost on port 80. No sign-in.
+# LiteLLM uses your own Application Default Credentials (Secret gcp-adc) to call Vertex AI.
+# local.env is written by scripts/local/apply-k8s.sh (gitignored); see local.env.example.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: agents
+
+resources:
+  - ../../base
+  - ../../../services/postgres
+  - ../../../services/temporal
+  - ../../../services/litellm
+  - ../../../../apps/worker/k8s
+  - ingress.yaml
+
+components:
+  - ../../components/placeholder-api
+
+configMapGenerator:
+  - name: litellm-env
+    behavior: merge
+    envs:
+      - local.env
+  # App images, written by scripts/local/build-push.sh. local-config keeps it out of the output.
+  - name: image-settings
+    envs:
+      - images.env
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        config.kubernetes.io/local-config: "true"
+
+patches:
+  - path: litellm-adc.yaml
+
+replacements:
+  - source: { kind: ConfigMap, name: image-settings, fieldPath: data.WORKER_IMAGE }
+    targets:
+      - select: { kind: Deployment, name: worker }
+        fieldPaths: ["spec.template.spec.containers.[name=worker].image"]

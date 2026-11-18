@@ -1,0 +1,78 @@
+# ---------- Secrets & credentials (NEVER commit) ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*.json
+*service-account*.json
+*-sa-key*.json
+*.keyfile
+secrets/
+k8s/**/secret*.yaml
+!k8s/**/secret*.example.yaml
+
+# ---------- Kubernetes ----------
+kubeconfig
+*.kubeconfig
+.kube/
+
+# ---------- Terraform ----------
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+*.tfplan
+tfplan
+platform/**/.build/
+
+# ---------- GCP ----------
+.config/gcloud/
+application_default_credentials.json
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# ---------- Node ----------
+node_modules/
+dist/
+*.tsbuildinfo
+.pnpm-store/
+coverage/
+
+# ---------- Editors / OS ----------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# ---------- Logs / scratch ----------
+*.log
+tmp/
+
+# ---------- Kubernetes ----------
+# Generated per cluster by scripts/gke/apply-k8s.sh
+platform/k8s/overlays/gke/cluster.env
+platform/k8s/overlays/local/local.env
+platform/k8s/overlays/*/images.env

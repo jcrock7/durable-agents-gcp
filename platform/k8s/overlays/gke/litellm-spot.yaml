@@ -1,0 +1,12 @@
+# LiteLLM is stateless: run it on Spot capacity (ADR-0014). Autopilot adds the matching toleration.
+# Spot nodes give ~25s notice before eviction; finish in-flight requests within that.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+spec:
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
+      terminationGracePeriodSeconds: 25

@@ -1,0 +1,15 @@
+# http://litellm:4000 (OpenAI-compatible). Only the agent worker may connect (network policy).
+apiVersion: v1
+kind: Service
+metadata:
+  name: litellm
+  labels:
+    app.kubernetes.io/name: litellm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: litellm
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http

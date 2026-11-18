@@ -1,0 +1,19 @@
+{
+  "name": "@agents/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The single Temporal worker process: runs every agent, each on its own task queue",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "bundle": "node dist/bundle.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@agents/agent-kit": "workspace:*",
+    "@agents/research-summarize": "workspace:*",
+    "@temporalio/worker": "1.25.0"
+  }
+}

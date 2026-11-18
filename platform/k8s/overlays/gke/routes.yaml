@@ -1,0 +1,33 @@
+# HTTPS traffic for the app hostname goes to the API (which also serves the UI).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: api
+spec:
+  parentRefs:
+    - name: external
+      sectionName: https
+  hostnames:
+    - APP_HOSTNAME # replaced from cluster.env
+  rules:
+    - backendRefs:
+        - name: api
+          port: 80
+---
+# Plain HTTP is redirected to HTTPS.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: http-to-https
+spec:
+  parentRefs:
+    - name: external
+      sectionName: http
+  hostnames:
+    - APP_HOSTNAME # replaced from cluster.env
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

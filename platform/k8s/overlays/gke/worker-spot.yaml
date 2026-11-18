@@ -1,0 +1,11 @@
+# The worker holds no state (workflow progress lives in Temporal): run it on Spot (ADR-0014).
+# On preemption it stops polling, and unfinished activities are retried on the replacement pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"

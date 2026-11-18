@@ -1,0 +1,10 @@
+# Separate database for LiteLLM, owned by its own role.
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: litellm
+spec:
+  name: litellm
+  owner: litellm
+  cluster:
+    name: agents-pg

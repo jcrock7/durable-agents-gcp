@@ -1,0 +1,19 @@
+{
+  "name": "budget-enforcer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enforces the monthly GCP budget: deletes GKE clusters and, as a last resort, disables project billing.",
+  "type": "module",
+  "main": "index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@google-cloud/billing": "^6.2.0",
+    "@google-cloud/container": "^7.3.0",
+    "@google-cloud/functions-framework": "^5.0.5"
+  }
+}

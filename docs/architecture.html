@@ -1,0 +1,588 @@
+<title>Durable Agents Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600;700&display=swap">
+<style>
+  /* Layout: modern advisory brief. Sticky numbered section rail on the left, one wide reading column on the
+     right; editorial serif figures and italic accents, ink on white with one deep green; exhibits sit in
+     soft green-tinted panels. Deliberately a single light theme (a printed-report look): every color is explicit. */
+  :root {
+    --paper: #ffffff;
+    --ink: #121417;
+    --grey: #646a73;
+    --soft: #8a9099;
+    --rule: #e3e5e8;
+    --accent: #0d6b57;
+    --accent-ring: rgba(13, 107, 87, 0.16);
+    --wash: #eef5f2;
+    --wash-2: #f5f7f6;
+    --hatch: #dfe5e2;
+    --sans: "Inter Tight", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
+    color-scheme: light;
+  }
+  body { background: var(--paper); color: var(--ink); font-family: var(--sans); font-size: 15.5px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper); }
+  h1, h2, h3, h4 { margin: 0; text-wrap: balance; }
+  p { margin: 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible, .node:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+  code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.85em; background: var(--wash-2); border: 1px solid var(--rule); padding: 1px 6px; border-radius: 5px; overflow-wrap: anywhere; }
+  em.s { font-family: var(--serif); font-style: italic; font-weight: 400; letter-spacing: -0.005em; color: var(--accent); }
+
+  .page { max-width: 1240px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 56px 80px; display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 0 64px; }
+
+  /* Rail */
+  .rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 32px); align-self: start; display: grid; gap: 22px; }
+  .brand { font-size: 13px; font-weight: 600; line-height: 1.35; }
+  .brand span { display: block; color: var(--grey); font-weight: 400; }
+  .rail nav { border-top: 1px solid var(--ink); padding-top: 14px; display: grid; gap: 10px; }
+  .rail nav a { color: var(--grey); font-size: 13.5px; display: grid; grid-template-columns: 30px 1fr; text-decoration: none; }
+  .rail nav a b { font-weight: 400; color: var(--soft); font-variant-numeric: tabular-nums; }
+  .rail nav a:hover, .rail nav a.on { color: var(--ink); }
+  .rail nav a.on { font-weight: 600; }
+  .rail nav a.on b { color: var(--accent); }
+  .rail .meta { font-size: 12px; color: var(--soft); border-top: 1px solid var(--rule); padding-top: 12px; }
+
+  main { display: grid; gap: 112px; min-width: 0; }
+  section { display: grid; gap: 36px; min-width: 0; scroll-margin-top: 32px; }
+  .eyebrow { font-size: 12.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+  .eyebrow b { color: var(--soft); font-weight: 500; margin-right: 10px; font-variant-numeric: tabular-nums; }
+  .head { display: grid; gap: 14px; max-width: 70ch; }
+  h2 { font-size: clamp(28px, 3.4vw, 40px); font-weight: 600; letter-spacing: -0.03em; line-height: 1.08; }
+  .lead { font-size: 17px; color: var(--grey); max-width: 62ch; }
+
+  /* Summary */
+  h1 { font-size: clamp(40px, 6.2vw, 76px); font-weight: 600; letter-spacing: -0.04em; line-height: 1.0; max-width: 15ch; }
+  .hero { display: grid; gap: 22px; }
+  .hero .lead { font-size: clamp(17px, 1.8vw, 19.5px); }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--ink); }
+  .kpi { padding: 18px 24px 4px 0; display: grid; gap: 8px; align-content: start; min-width: 0; }
+  .kpi + .kpi { padding-left: 24px; border-left: 1px solid var(--rule); }
+  .kpi .k { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--grey); }
+  .kpi .n { font-family: var(--serif); font-size: clamp(48px, 5.2vw, 66px); line-height: 0.92; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+  .kpi .n small { font-family: var(--sans); font-size: 14px; color: var(--grey); letter-spacing: 0; margin-left: 6px; }
+  .kpi p { font-size: 14px; color: var(--grey); }
+  @media (max-width: 1000px) { .kpis { grid-template-columns: 1fr 1fr; } .kpi:nth-child(3) { padding-left: 0; border-left: 0; } .kpi:nth-child(n+3) { border-top: 1px solid var(--rule); padding-top: 18px; margin-top: 14px; } }
+  @media (max-width: 520px) { .kpis { grid-template-columns: 1fr; } .kpi + .kpi { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); margin-top: 14px; } }
+
+  /* Exhibit panel */
+  .exhibit { background: var(--wash); border-radius: 18px; padding: 18px; display: grid; gap: 14px; min-width: 0; }
+  .ex-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 18px; padding: 4px 4px 0; }
+  .ex-title { font-size: 13.5px; color: var(--grey); }
+  .ex-title b { color: var(--ink); font-weight: 600; margin-right: 6px; }
+  .seg-group { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; background: var(--paper); border: 1px solid var(--rule); border-radius: 999px; }
+  .seg { font: 500 13px var(--sans); color: var(--grey); background: transparent; border: 0; border-radius: 999px; padding: 6px 14px; cursor: pointer; }
+  .seg:hover { color: var(--ink); }
+  .seg[aria-pressed="true"] { background: var(--accent); color: #ffffff; }
+  .card { background: var(--paper); border-radius: 12px; box-shadow: 0 1px 2px rgba(18, 20, 23, 0.05); overflow: hidden; min-width: 0; }
+  .scroller { overflow-x: auto; padding: 14px 14px 6px; }
+  svg.sys { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); font-family: var(--sans); }
+  .view-note { font-size: 14px; color: var(--grey); padding: 0 4px; min-height: 1.6em; }
+  .view-note b { color: var(--ink); font-weight: 600; }
+  .steps { margin: 0; padding: 0 4px 6px; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 40px; counter-reset: step; font-size: 14px; color: var(--grey); }
+  .steps li { counter-increment: step; position: relative; padding-left: 30px; }
+  .steps li::before { content: counter(step); position: absolute; left: 0; top: 1px; font-family: var(--serif); font-size: 21px; line-height: 1; color: var(--ink); }
+  .steps li.acc::before { color: var(--accent); }
+  @media (max-width: 760px) { .steps { grid-template-columns: 1fr; } }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: 13px; color: var(--grey); padding: 0 4px; }
+  .sw { display: inline-block; width: 18px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 8px; border: 1px solid #c9d1cd; }
+  .sw.spot { background: repeating-linear-gradient(135deg, #ffffff 0 3px, var(--hatch) 3px 5px); }
+  .sw.od { background: var(--wash-2); }
+  .sw.managed { border-style: dashed; background: #ffffff; }
+  .sw.dur { background: var(--accent); border-color: var(--accent); height: 3px; vertical-align: 3px; }
+
+  /* SVG parts */
+  .zone { fill: none; stroke: #c9d1cd; stroke-width: 1; }
+  .zone.edge, .zone.managed { stroke-dasharray: 5 5; }
+  .lane { stroke: var(--rule); stroke-width: 1; }
+  .lane.spot { fill: url(#hatch); }
+  .lane.od { fill: var(--wash-2); }
+  .hatch-line { stroke: #edf0ef; stroke-width: 2; }
+  .zlabel { font: 600 12.5px var(--sans); fill: var(--ink); }
+  .llabel { font: 600 10px var(--sans); letter-spacing: 0.1em; fill: var(--soft); }
+  .llabel-bg { fill: var(--paper); }
+  .node { cursor: pointer; }
+  .node .box { fill: var(--paper); stroke: #cfd5d2; stroke-width: 1.2; transition: stroke 0.15s; }
+  .node:hover .box { stroke: var(--grey); }
+  .node.key .box { stroke: var(--accent); stroke-width: 1.6; }
+  .node.is-selected .box { stroke: var(--accent); stroke-width: 2.6; }
+  .n-title { font: 600 13.5px var(--sans); fill: var(--ink); }
+  .n-sub { font: 400 11px var(--sans); fill: var(--grey); }
+  .wire { fill: none; stroke: #8f979f; stroke-width: 1.3; }
+  .wire.accent { stroke: var(--accent); stroke-width: 2.4; }
+  .wire.dashed { stroke-dasharray: 3 4; }
+  .ring { fill: none; stroke: var(--accent); stroke-width: 9; opacity: 0.12; }
+  .lbl { font: 500 11px var(--sans); fill: var(--ink); paint-order: stroke; stroke: var(--paper); stroke-width: 5px; stroke-linejoin: round; }
+  .badge circle { fill: var(--paper); stroke: var(--ink); stroke-width: 1.1; }
+  .badge text { font: 400 13px var(--serif); fill: var(--ink); }
+  .badge.accent circle { fill: var(--accent); stroke: var(--accent); }
+  .badge.accent text { fill: #ffffff; }
+  [data-views] { transition: opacity 0.25s; }
+  svg.sys[data-view="durability"] [data-views]:not([data-views~="durability"]),
+  svg.sys[data-view="spend"] [data-views]:not([data-views~="spend"]),
+  svg.sys[data-view="trust"] [data-views]:not([data-views~="trust"]) { opacity: 0.1; }
+
+  /* Component rows */
+  .rows { border-top: 1px solid var(--ink); }
+  .row { display: grid; grid-template-columns: 190px 1fr 1fr 1.05fr; gap: 0 28px; padding: 22px 14px; margin-inline: -14px; border-bottom: 1px solid var(--rule); border-radius: 12px; scroll-margin: 32px; transition: background 0.2s; }
+  .row.is-selected { background: var(--wash); }
+  .row h3 { font-size: 17.5px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; }
+  .place { display: inline-flex; align-items: center; gap: 7px; margin-top: 8px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--soft); }
+  .place::before { content: ""; width: 14px; height: 10px; border-radius: 3px; border: 1px solid #c9d1cd; }
+  .place.spot::before { background: repeating-linear-gradient(135deg, #ffffff 0 2px, var(--hatch) 2px 4px); }
+  .place.od::before { background: var(--wash-2); }
+  .place.managed::before, .place.edge::before, .place.around::before { border-style: dashed; }
+  .cell { display: grid; gap: 4px; align-content: start; min-width: 0; font-size: 14.5px; color: var(--grey); }
+  .cell .h { font-size: 11.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
+  .say { display: grid; gap: 10px; align-content: start; }
+  .say q { font-family: var(--serif); font-size: 21px; line-height: 1.28; letter-spacing: -0.005em; quotes: "“" "”"; }
+  .ref { font-size: 12.5px; font-weight: 500; }
+  @media (max-width: 1100px) { .row { grid-template-columns: 1fr 1fr; gap: 14px 24px; } .row > :first-child, .say { grid-column: 1 / -1; } }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+
+  /* Roadmap */
+  .tbl { overflow-x: auto; border-top: 1px solid var(--ink); }
+  table { border-collapse: collapse; width: 100%; min-width: 680px; font-size: 14.5px; }
+  th, td { text-align: left; padding: 15px 20px 15px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 11.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--grey); }
+  td { color: var(--grey); }
+  td:first-child { color: var(--ink); font-weight: 600; white-space: nowrap; width: 150px; }
+  td.prod { color: var(--ink); }
+  .decisions { display: grid; grid-template-columns: auto 1fr; gap: 20px; align-items: center; background: var(--wash); border-radius: 18px; padding: 22px 26px; }
+  .decisions .n { font-family: var(--serif); font-size: 64px; line-height: 0.9; color: var(--accent); }
+  .decisions p { font-size: 15.5px; color: var(--ink); max-width: 62ch; }
+
+  /* Scenarios */
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; }
+  @media (max-width: 1000px) { .two { grid-template-columns: 1fr; } }
+  .two > div { display: grid; gap: 18px; align-content: start; min-width: 0; }
+  .two h3 { font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
+  .list { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--ink); }
+  .list li { display: grid; grid-template-columns: 58px 1fr; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--rule); color: var(--grey); font-size: 14.5px; }
+  .list .t { font-family: var(--serif); font-size: 22px; line-height: 1.05; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .list b, .list h4 { color: var(--ink); font-weight: 600; }
+  .list h4 { font-size: 15.5px; letter-spacing: -0.01em; margin-bottom: 3px; }
+
+  footer { border-top: 1px solid var(--rule); padding-top: 18px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; font-size: 13px; color: var(--soft); }
+
+  @media (max-width: 900px) {
+    .page { grid-template-columns: minmax(0, 1fr); gap: 32px; padding-block: 32px 64px; }
+    .rail { position: static; }
+    .rail nav { grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; gap: 18px; padding-bottom: 4px; }
+    .rail nav a { grid-template-columns: auto auto; gap: 6px; }
+    .rail .meta { display: none; }
+    main { gap: 88px; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } html { scroll-behavior: auto !important; } }
+</style>
+
+<div class="page">
+  <aside class="rail">
+    <div class="brand">Durable Agents on GCP<span>Architecture brief</span></div>
+    <nav aria-label="Sections">
+      <a href="#summary" class="on"><b>01</b>Summary</a>
+      <a href="#architecture"><b>02</b>Architecture</a>
+      <a href="#components"><b>03</b>Components</a>
+      <a href="#roadmap"><b>04</b>Path to production</a>
+      <a href="#scenarios"><b>05</b>Scenarios</a>
+    </nav>
+    <p class="meta">Reference architecture<br>Google Cloud · GKE<br>November 2026</p>
+  </aside>
+
+  <main>
+    <section id="summary" aria-labelledby="h-summary">
+      <div class="hero">
+        <span class="eyebrow"><b>01</b>Summary</span>
+        <h1 id="h-summary">AI agents that <em class="s">finish the job</em>, safely and on budget.</h1>
+        <p class="lead">A reference platform for running AI agents in Google Cloud platform. Runs survive failures, every model call is governed and costed, and no credential lives in application code. The whole environment comes up from one command and is torn down when idle.</p>
+      </div>
+      <div class="kpis" role="list">
+        <div class="kpi" role="listitem">
+          <span class="k">Reliability</span>
+          <span class="n">0<small>steps lost</small></span>
+          <p>By design, a crashed or evicted worker resumes from its last completed step.</p>
+        </div>
+        <div class="kpi" role="listitem">
+          <span class="k">Cost governance</span>
+          <span class="n">$0.10<small>per hour</small></span>
+          <p>Estimated infrastructure cost while running. Per-agent budgets cap model spend.</p>
+        </div>
+        <div class="kpi" role="listitem">
+          <span class="k">Security</span>
+          <span class="n">1<small>identity</small></span>
+          <p>Only one service account can call a model. One public entry point, behind Google sign-in.</p>
+        </div>
+        <div class="kpi" role="listitem">
+          <span class="k">Delivery</span>
+          <span class="n">1<small>command</small></span>
+          <p>Terraform builds and destroys the environment. Evals gate every change before it merges.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture" aria-labelledby="h-arch">
+      <div class="head">
+        <span class="eyebrow"><b>02</b>Architecture</span>
+        <h2 id="h-arch">One <em class="s">governed path</em> from sign-in to stored result</h2>
+        <p class="lead">Eight steps, each with a single job. Switch views to isolate the three properties that matter most to the business.</p>
+      </div>
+      <figure class="exhibit" style="margin:0">
+        <div class="ex-top">
+          <span class="ex-title"><b>Exhibit 1</b>Request path on GKE</span>
+          <div class="seg-group" role="group" aria-label="Highlight part of the system">
+            <button class="seg" type="button" id="v-all" data-view="all" aria-pressed="true">Full system</button>
+            <button class="seg" type="button" id="v-durability" data-view="durability" aria-pressed="false">Reliability</button>
+            <button class="seg" type="button" id="v-spend" data-view="spend" aria-pressed="false">Cost control</button>
+            <button class="seg" type="button" id="v-trust" data-view="trust" aria-pressed="false">Security</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="scroller">
+            <svg class="sys" id="sys" viewBox="0 0 1120 600" role="img" aria-label="Request path: a user reaches the API through the GKE Gateway with Identity-Aware Proxy. The API starts a Temporal workflow; the agent worker polls Temporal, calls models only through the LiteLLM gateway, which uses Workload Identity to call Vertex AI and logs spend to Postgres. Stateless pods run on Spot, Temporal and Postgres on on-demand capacity.">
+              <defs>
+                <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                  <line class="hatch-line" x1="0" y1="0" x2="0" y2="8"/>
+                </pattern>
+                <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0 0 L10 5 L0 10 z" style="fill: #8f979f"/>
+                </marker>
+                <marker id="arr-acc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M0 0 L10 5 L0 10 z" style="fill: var(--accent)"/>
+                </marker>
+              </defs>
+
+              <!-- Zones -->
+              <rect class="zone edge" x="172" y="196" width="168" height="168" rx="14"/>
+              <text class="zlabel" x="188" y="218">Public edge</text>
+
+              <rect class="zone" x="380" y="30" width="510" height="540" rx="16"/>
+              <text class="zlabel" x="398" y="54">GKE Autopilot · private cluster</text>
+              <rect class="lane spot" x="396" y="70" width="478" height="200" rx="10"/>
+              <rect class="llabel-bg" x="404" y="80" width="128" height="17" rx="4"/>
+              <text class="llabel" x="410" y="92">SPOT · STATELESS</text>
+              <rect class="lane od" x="396" y="310" width="478" height="244" rx="10"/>
+              <text class="llabel" x="410" y="332">ON-DEMAND · STATEFUL</text>
+
+              <rect class="zone managed" x="912" y="30" width="196" height="540" rx="16"/>
+              <text class="zlabel" x="928" y="54">Google-managed</text>
+
+              <!-- Edges -->
+              <g class="edge" data-views="trust">
+                <path class="wire" d="M136 280 H182" marker-end="url(#arr)"/>
+                <text class="lbl" x="160" y="258" text-anchor="middle">HTTPS</text>
+                <g class="badge"><circle cx="160" cy="280" r="10"/><text x="160" y="284.5" text-anchor="middle">1</text></g>
+              </g>
+              <g class="edge" data-views="trust">
+                <path class="wire" d="M326 280 H360 V172 H406" marker-end="url(#arr)"/>
+                <text class="lbl" x="345" y="230" text-anchor="end">IAP-checked</text>
+                <g class="badge"><circle cx="360" cy="226" r="10"/><text x="360" y="230.5" text-anchor="middle">2</text></g>
+              </g>
+              <g class="edge" data-views="durability">
+                <path class="ring" d="M472 204 V414"/>
+                <path class="wire accent" d="M472 204 V414" marker-end="url(#arr-acc)"/>
+                <text class="lbl" x="456" y="294" text-anchor="end">start · signal</text>
+                <g class="badge accent"><circle cx="472" cy="290" r="10"/><text x="472" y="294.5" text-anchor="middle">3</text></g>
+              </g>
+              <g class="edge" data-views="durability">
+                <path class="ring" d="M622 210 L581 414"/>
+                <path class="wire accent" d="M622 210 L581 414" marker-start="url(#arr-acc)" marker-end="url(#arr-acc)"/>
+                <text class="lbl" x="589" y="294" text-anchor="end">polls task queue</text>
+                <g class="badge accent"><circle cx="605" cy="290" r="10"/><text x="605" y="294.5" text-anchor="middle">4</text></g>
+              </g>
+              <g class="edge" data-views="spend">
+                <path class="wire" d="M697 172 H730" marker-end="url(#arr)"/>
+                <text class="lbl" x="715" y="130" text-anchor="middle">fast / smart</text>
+                <g class="badge"><circle cx="715" cy="172" r="10"/><text x="715" y="176.5" text-anchor="middle">5</text></g>
+              </g>
+              <g class="edge" data-views="spend trust">
+                <path class="wire" d="M859 160 H921" marker-end="url(#arr)"/>
+                <text class="lbl" x="891" y="138" text-anchor="middle">Workload Identity</text>
+                <g class="badge"><circle cx="891" cy="160" r="10"/><text x="891" y="164.5" text-anchor="middle">6</text></g>
+              </g>
+              <g class="edge" data-views="spend">
+                <path class="wire" d="M797 204 V414" marker-end="url(#arr)"/>
+                <text class="lbl" x="813" y="294">spend logs</text>
+                <g class="badge"><circle cx="797" cy="290" r="10"/><text x="797" y="294.5" text-anchor="middle">7</text></g>
+              </g>
+              <g class="edge" data-views="">
+                <path class="wire" d="M680 206 L714 414" marker-end="url(#arr)"/>
+                <text class="lbl" x="710" y="294">results</text>
+                <g class="badge"><circle cx="694" cy="290" r="10"/><text x="694" y="294.5" text-anchor="middle">8</text></g>
+              </g>
+              <g class="edge" data-views="">
+                <path class="wire dashed" d="M890 315 H921" marker-end="url(#arr)"/>
+                <text class="lbl" x="905" y="303" text-anchor="middle">OTel</text>
+              </g>
+              <g class="edge" data-views="trust">
+                <path class="wire dashed" d="M923 475 H892" marker-end="url(#arr)"/>
+                <text class="lbl" x="907" y="463" text-anchor="middle">CSI</text>
+              </g>
+
+              <!-- Nodes -->
+              <g class="node" data-id="user" data-views="trust" tabindex="0" role="button" aria-label="User: browser">
+                <rect class="box" x="16" y="248" width="120" height="64" rx="10"/>
+                <text class="n-title" x="76" y="276" text-anchor="middle">User</text>
+                <text class="n-sub" x="76" y="294" text-anchor="middle">browser</text>
+              </g>
+              <g class="node" data-id="gateway" data-views="trust" tabindex="0" role="button" aria-label="Gateway and IAP: show details">
+                <rect class="box" x="186" y="248" width="140" height="64" rx="10"/>
+                <text class="n-title" x="256" y="276" text-anchor="middle">Gateway + IAP</text>
+                <text class="n-sub" x="256" y="294" text-anchor="middle">Google sign-in</text>
+              </g>
+              <g class="node" data-id="api" data-views="durability trust" tabindex="0" role="button" aria-label="API and UI: show details">
+                <rect class="box" x="410" y="140" width="125" height="64" rx="10"/>
+                <text class="n-title" x="472" y="168" text-anchor="middle">API + UI</text>
+                <text class="n-sub" x="472" y="186" text-anchor="middle">Fastify · React</text>
+              </g>
+              <g class="node key" data-id="worker" data-views="durability spend" tabindex="0" role="button" aria-label="Agent worker: show details">
+                <rect class="box" x="572" y="140" width="125" height="64" rx="10"/>
+                <text class="n-title" x="634" y="168" text-anchor="middle">Agent worker</text>
+                <text class="n-sub" x="634" y="186" text-anchor="middle">Temporal · AI SDK</text>
+              </g>
+              <g class="node" data-id="litellm" data-views="spend trust" tabindex="0" role="button" aria-label="LiteLLM gateway: show details">
+                <rect class="box" x="734" y="140" width="125" height="64" rx="10"/>
+                <text class="n-title" x="796" y="168" text-anchor="middle">LiteLLM</text>
+                <text class="n-sub" x="796" y="186" text-anchor="middle">route · budget · guard</text>
+              </g>
+              <g class="node key" data-id="temporal" data-views="durability" tabindex="0" role="button" aria-label="Temporal: show details">
+                <rect class="box" x="430" y="418" width="170" height="70" rx="10"/>
+                <text class="n-title" x="515" y="449" text-anchor="middle">Temporal</text>
+                <text class="n-sub" x="515" y="468" text-anchor="middle">event history · SQLite</text>
+              </g>
+              <g class="node" data-id="postgres" data-views="spend" tabindex="0" role="button" aria-label="Postgres with pgvector: show details">
+                <rect class="box" x="660" y="418" width="170" height="70" rx="10"/>
+                <text class="n-title" x="745" y="449" text-anchor="middle">Postgres</text>
+                <text class="n-sub" x="745" y="468" text-anchor="middle">pgvector · spend logs</text>
+              </g>
+              <g class="node" data-id="vertex" data-views="spend trust" tabindex="0" role="button" aria-label="Vertex AI: show details">
+                <rect class="box" x="925" y="125" width="170" height="70" rx="10"/>
+                <text class="n-title" x="1010" y="156" text-anchor="middle">Vertex AI</text>
+                <text class="n-sub" x="1010" y="175" text-anchor="middle">Gemini · Model Garden</text>
+              </g>
+              <g class="node" data-id="obs" data-views="" tabindex="0" role="button" aria-label="Cloud Trace and Logging: show details">
+                <rect class="box" x="925" y="280" width="170" height="70" rx="10"/>
+                <text class="n-title" x="1010" y="311" text-anchor="middle">Cloud Trace / Logging</text>
+                <text class="n-sub" x="1010" y="330" text-anchor="middle">one trace per run</text>
+              </g>
+              <g class="node" data-id="secrets" data-views="trust" tabindex="0" role="button" aria-label="Secret Manager: show details">
+                <rect class="box" x="925" y="440" width="170" height="70" rx="10"/>
+                <text class="n-title" x="1010" y="471" text-anchor="middle">Secret Manager</text>
+                <text class="n-sub" x="1010" y="490" text-anchor="middle">keys · passwords</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+        <p class="view-note" id="view-note" aria-live="polite">Select any component to see what it does and why it was chosen.</p>
+        <div class="legend">
+          <span><i class="sw spot"></i>Spot pods: stateless, can be evicted</span>
+          <span><i class="sw od"></i>On-demand pods: hold state</span>
+          <span><i class="sw managed"></i>Google-managed services</span>
+          <span><i class="sw dur"></i>Durable execution path</span>
+        </div>
+        <ol class="steps">
+          <li>The user opens the app URL over HTTPS.</li>
+          <li>IAP requires a Google sign-in from a user or group on the access list.</li>
+          <li class="acc">The API starts a Temporal workflow and returns at once. Approvals arrive later as signals.</li>
+          <li class="acc">The agent worker polls its task queue. Temporal records every completed step.</li>
+          <li>Activities call models by alias (<code>fast</code>, <code>smart</code>) through LiteLLM, which runs the guardrail checks.</li>
+          <li>LiteLLM is the only workload allowed to call Vertex AI, through Workload Identity.</li>
+          <li>Tokens and cost per request are logged to Postgres.</li>
+          <li>Results and retrieval embeddings (pgvector) are stored in Postgres.</li>
+        </ol>
+      </figure>
+    </section>
+
+    <section id="components" aria-labelledby="h-comp">
+      <div class="head">
+        <span class="eyebrow"><b>03</b>Components</span>
+        <h2 id="h-comp">Every part earns its place, and <em class="s">each choice is on record</em></h2>
+        <p class="lead">What each component does, why it was chosen over the alternatives, and the design principle it enforces.</p>
+      </div>
+      <div class="rows" id="rows">
+        <article class="row" id="c-gateway">
+          <div><h3>Gateway + IAP</h3><span class="place edge">Public edge</span></div>
+          <div class="cell"><span class="h">Function</span><p>The only public entry point. Terminates TLS and requires a Google sign-in before any request reaches the app.</p></div>
+          <div class="cell"><span class="h">Rationale</span><p>No auth code in the application, access granted per user or group, and unauthenticated traffic can't spend the model budget.</p></div>
+          <div class="say"><q>No request reaches an agent without an approved Google identity.</q><a class="ref" href="https://github.com/jcrock7/durable-agents-gcp/blob/main/docs/adr/0010-edge-access-iap.md">Decision record 0010 →</a></div>
+        </article>
+        <article class="row" id="c-api">
+          <div><h3>API + UI</h3><span class="place spot">Spot</span></div>
+          <div class="cell"><span class="h">Function</span><p>Fastify serves the React app and the REST API. It starts workflows, forwards approvals as signals and reads progress with queries.</p></div>
+          <div class="cell"><span class="h">Rationale</span><p>One TypeScript image for UI and API saves a pod, and types are shared with the workers.</p></div>
+          <div class="say"><q>The API never runs agent logic. It hands work to Temporal and returns immediately.</q><a class="ref" href="https://github.com/jcrock7/durable-agents-gcp/blob/main/docs/adr/0013-consolidated-workloads.md">Decision records 0001, 0013 →</a></div>
+        </article>
+        <article class="row" id="c-temporal">
+          <div><h3>Temporal</h3><span class="place od">On-demand</span></div>
+          <div class="cell"><span class="h">Function</span><p>Durable runtime. Records each step of every agent run as event history, retries failures with backoff, and holds runs that wait for a human.</p></div>
+          <div class="cell"><span class="h">Rationale</span><p>Agent runs are long, multi-step and call unreliable services. For the prototype it's a single dev-server pod with SQLite on a persistent disk.</p></div>
+          <div class="say"><q>If a pod dies mid-run, the agent resumes from its last completed step, not from scratch.</q><a class="ref" href="https://github.com/jcrock7/durable-agents-gcp/blob/main/docs/adr/0011-temporal-single-pod.md">Decision records 0002, 0011 →</a></div>
+        </article>
+        <article class="row" id="c-worker">
+          <div><h3>Agent worker</h3><span class="place spot">Spot</span></div>
+          <div class="cell"><span class="h">Function</span><p>Runs workflow and activity code for every agent, one task queue per agent. Model and tool calls happen only inside activities, using the Vercel AI SDK.</p></div>
+          <div class="cell"><span class="h">Rationale</span><p>It's stateless, so it runs on Spot. Temporal absorbs Spot evictions without losing work.</p></div>
+          <div class="say"><q>Workflows decide, activities act. Only activities touch the network.</q><a class="ref" href="https://github.com/jcrock7/durable-agents-gcp/blob/main/docs/adr/0003-agent-framework.md">Decision records 0003, 0013 →</a></div>
+        </article>
+        <article class="row" id="c-litellm">
+          <div><h3>LiteLLM gateway</h3><span class="place spot">Spot</span></div>
+          <div class="cell"><span class="h">Function</span><p>One model endpoint. Maps aliases to Vertex models with fallbacks, enforces per-agent budgets, logs cost per request, and screens prompts for injection.</p></div>
+          <div class="cell"><span class="h">Rationale</span><p>Agents hold no cloud credentials, and spend and safety are controlled in one place. Guardrails layer Vertex safety filters, a Flash-Lite injection check, and tool allow-lists in the app.</p></div>
+          <div class="say"><q>Every token goes through one door, and that door has a budget.</q><a class="ref" href="https://github.com/jcrock7/durable-agents-gcp/blob/main/docs/adr/0005-llm-gateway-litellm.md">Decision records 0005, 0012 →</a></div>
+        </article>
+        <article class="row" id="c-postgres">
+          <div><h3>Postgres + pgvector</h3><span class="place od">On-demand</span></div>
+          <div class="cell"><span class="h">Function</span><p>App data, agent results, retrieval embeddings, and LiteLLM spend logs, in separate databases.</p></div>
+          <div class="cell"><span class="h">Rationale</span><p>One stateful store; pgvector avoids a separate vector database. Runs on the CloudNativePG operator, with Cloud SQL available behind a Terraform flag.</p></div>
+          <div class="say"><q>One database, backed up to Cloud Storage before the cluster is torn down.</q><a class="ref" href="https://github.com/jcrock7/durable-agents-gcp/blob/main/docs/adr/0007-postgres-pgvector.md">Decision record 0007 →</a></div>
+        </article>
+        <article class="row" id="c-vertex">
+          <div><h3>Vertex AI</h3><span class="place managed">Google-managed</span></div>
+          <div class="cell"><span class="h">Function</span><p>Gemini models plus partner models from Model Garden.</p></div>
+          <div class="cell"><span class="h">Rationale</span><p>IAM-based auth with no keys, one bill, and several model families to route between.</p></div>
+          <div class="say"><q>Exactly one service account in the cluster can call a model: the gateway's.</q><a class="ref" href="https://github.com/jcrock7/durable-agents-gcp/blob/main/docs/adr/0004-vertex-ai-models.md">Decision record 0004 →</a></div>
+        </article>
+        <article class="row" id="c-obs">
+          <div><h3>Cloud Trace + Logging</h3><span class="place managed">Google-managed</span></div>
+          <div class="cell"><span class="h">Function</span><p>One trace per agent run, spanning API, workflow, activity, gateway and model call.</p></div>
+          <div class="cell"><span class="h">Rationale</span><p>OpenTelemetry keeps instrumentation vendor-neutral. Exporting straight to managed backends means no collector pod.</p></div>
+          <div class="say"><q>Every run can be traced end to end: where the time went and what it cost.</q><a class="ref" href="https://github.com/jcrock7/durable-agents-gcp/blob/main/docs/adr/0008-observability.md">Decision records 0008, 0013 →</a></div>
+        </article>
+        <article class="row" id="c-secrets">
+          <div><h3>Secret Manager</h3><span class="place managed">Google-managed</span></div>
+          <div class="cell"><span class="h">Function</span><p>Holds the gateway master key and database passwords, mounted into pods by the Secret Manager add-on.</p></div>
+          <div class="cell"><span class="h">Rationale</span><p>No secrets in git, images or manifests. The public repo is checked by gitleaks before every commit and again in CI.</p></div>
+          <div class="say"><q>The repo is public and contains no secrets, and that's enforced, not just promised.</q><a class="ref" href="https://github.com/jcrock7/durable-agents-gcp/blob/main/docs/SETUP.md#4-security--secrets-hygiene-public-repo-rules">Setup guide, section 4 →</a></div>
+        </article>
+        <article class="row" id="c-ci">
+          <div><h3>GitHub Actions + promptfoo</h3><span class="place around">Around the cluster</span></div>
+          <div class="cell"><span class="h">Function</span><p>Evals gate every pull request, and a red-team suite tests the guardrails. Authenticates to GCP with Workload Identity Federation.</p></div>
+          <div class="cell"><span class="h">Rationale</span><p>Prompt and model changes break agents silently. Tests make quality visible.</p></div>
+          <div class="say"><q>A prompt change that fails the eval suite doesn't merge.</q><a class="ref" href="https://github.com/jcrock7/durable-agents-gcp/blob/main/docs/adr/0009-evals-promptfoo.md">Decision record 0009 →</a></div>
+        </article>
+        <article class="row" id="c-terraform">
+          <div><h3>Terraform</h3><span class="place around">Around the cluster</span></div>
+          <div class="cell"><span class="h">Function</span><p>Two layers. A persistent layer (state bucket, registry, secrets, service accounts) stays. An ephemeral layer (network, Autopilot cluster, load balancer) is created when needed and destroyed when idle.</p></div>
+          <div class="cell"><span class="h">Rationale</span><p>Reproducible from scratch, and nothing expensive runs while the platform is idle.</p></div>
+          <div class="say"><q>The whole environment comes up from one command and costs around ten cents an hour while it's up.</q><a class="ref" href="https://github.com/jcrock7/durable-agents-gcp/blob/main/docs/adr/0014-gke-autopilot-spot.md">Decision record 0014 →</a></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="roadmap" aria-labelledby="h-road">
+      <div class="head">
+        <span class="eyebrow"><b>04</b>Path to production</span>
+        <h2 id="h-road">Built lean <em class="s">on purpose</em>, with a clear upgrade path</h2>
+        <p class="lead">Each simplification is deliberate. The agent code stays the same in every row; only the platform underneath changes.</p>
+      </div>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Concern</th><th>Prototype today</th><th>Production path</th></tr></thead>
+          <tbody>
+            <tr><td>Temporal</td><td>Single dev-server pod, SQLite on a persistent disk</td><td class="prod">Temporal Cloud, or the Helm chart on Postgres or Cassandra</td></tr>
+            <tr><td>Guardrails</td><td>Vertex safety filters, Flash-Lite injection check, tool allow-lists, human approval</td><td class="prod">Add Model Armor, plus Presidio where PII is involved</td></tr>
+            <tr><td>Database</td><td>CloudNativePG in the cluster, backed up to Cloud Storage</td><td class="prod">Cloud SQL or AlloyDB with high availability</td></tr>
+            <tr><td>Workers</td><td>One shared Deployment, one task queue per agent</td><td class="prod">One Deployment per agent, autoscaled on queue depth</td></tr>
+            <tr><td>Compute</td><td>Autopilot, Spot for stateless pods</td><td class="prod">On-demand baseline with Spot for burst</td></tr>
+            <tr><td>Access</td><td>IAP access list of users or groups</td><td class="prod">IAP plus Cloud Armor and roles inside the app</td></tr>
+            <tr><td>LLM tracing</td><td>Cloud Trace</td><td class="prod">Add Langfuse for prompt and score views</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="decisions">
+        <span class="n">14</span>
+        <p>architecture decision records document these trade-offs, including the ones that were later revised when cost estimates changed the answer. <a href="https://github.com/jcrock7/durable-agents-gcp/tree/main/docs/adr">Read them on GitHub →</a></p>
+      </div>
+    </section>
+
+    <section id="scenarios" aria-labelledby="h-scen">
+      <div class="head">
+        <span class="eyebrow"><b>05</b>Scenarios</span>
+        <h2 id="h-scen">How the platform behaves <em class="s">under failure and pressure</em></h2>
+        <p class="lead">The principles behind the design, and the scenarios that verify each one.</p>
+      </div>
+      <div class="two">
+        <div>
+          <h3>Design principles</h3>
+          <ol class="list">
+            <li><span class="t">01</span><p><b>Durable by default.</b> Agent runs are long and call unreliable services, so every step is recorded and every run can resume.</p></li>
+            <li><span class="t">02</span><p><b>One governed path.</b> Sign-in at the edge, the API hands off to Temporal, the worker does the work, and every model call goes through one gateway.</p></li>
+            <li><span class="t">03</span><p><b>Failure is routine.</b> Stateless pods run on Spot capacity. Evictions are expected, and Temporal absorbs them.</p></li>
+            <li><span class="t">04</span><p><b>Spend and safety in one place.</b> The gateway enforces budgets, logs cost per run and screens prompts.</p></li>
+            <li><span class="t">05</span><p><b>Disposable infrastructure.</b> Terraform creates and destroys the environment. It costs about ten cents an hour while running and close to nothing when idle.</p></li>
+          </ol>
+        </div>
+        <div>
+          <h3>Verification scenarios</h3>
+          <ol class="list">
+            <li><span class="t">01</span><div><h4>Worker fails mid-run</h4><p>Delete the worker pod (<code>kubectl delete pod -l app=worker</code>). The run pauses, a replacement pod starts, and the run continues from its last completed step.</p></div></li>
+            <li><span class="t">02</span><div><h4>Prompt injection in retrieved content</h4><p>A document the agent reads contains a hidden instruction. The gateway blocks the call and logs the reason.</p></div></li>
+            <li><span class="t">03</span><div><h4>Budget exhausted</h4><p>An agent reaches its spend limit. The gateway refuses further calls and the workflow stops cleanly with a clear status.</p></div></li>
+            <li><span class="t">04</span><div><h4>Risky action needs approval</h4><p>The agent pauses before a write. An approval signal resumes the run.</p></div></li>
+            <li><span class="t">05</span><div><h4>End-to-end trace</h4><p>Each run produces one trace spanning the API, workflow, activity, gateway and Vertex AI call.</p></div></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <span>Cost figures are estimates from us-central1 list prices; check them in the GCP pricing calculator.</span>
+      <span>durable-agents-gcp</span>
+    </footer>
+  </main>
+</div>
+
+<script>
+  (function () {
+    var svg = document.getElementById('sys');
+    var note = document.getElementById('view-note');
+    var notes = {
+      all: 'Select any component to see what it does and why it was chosen.',
+      durability: '<b>Reliability.</b> Temporal stores every step. The worker can be evicted at any time and the run resumes.',
+      spend: '<b>Cost control.</b> Every model call passes one gateway, which enforces budgets and logs cost per request.',
+      trust: '<b>Security.</b> One public entry point behind Google sign-in. Only the gateway can call a model, and secrets come from Secret Manager.'
+    };
+    var buttons = document.querySelectorAll('.seg');
+    buttons.forEach(function (b) {
+      b.addEventListener('click', function () {
+        var v = b.getAttribute('data-view');
+        buttons.forEach(function (o) { o.setAttribute('aria-pressed', String(o === b)); });
+        if (v === 'all') { svg.removeAttribute('data-view'); } else { svg.setAttribute('data-view', v); }
+        note.innerHTML = notes[v];
+      });
+    });
+
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function select(id) {
+      document.querySelectorAll('.node.is-selected, .row.is-selected').forEach(function (el) { el.classList.remove('is-selected'); });
+      var node = svg.querySelector('.node[data-id="' + id + '"]');
+      var row = document.getElementById('c-' + id);
+      if (node) node.classList.add('is-selected');
+      if (row) {
+        row.classList.add('is-selected');
+        row.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+      }
+    }
+    svg.querySelectorAll('.node').forEach(function (n) {
+      var id = n.getAttribute('data-id');
+      n.addEventListener('click', function () { select(id); });
+      n.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(id); }
+      });
+    });
+
+    // Highlight the rail entry for the section in view.
+    var links = Array.prototype.slice.call(document.querySelectorAll('.rail nav a'));
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (!e.isIntersecting) return;
+          links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + e.target.id); });
+        });
+      }, { rootMargin: '-35% 0px -60% 0px' });
+      document.querySelectorAll('main section[id]').forEach(function (s) { io.observe(s); });
+    }
+  })();
+</script>

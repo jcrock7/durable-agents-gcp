@@ -1,0 +1,26 @@
+# Defaults for containers that don't set requests, and a ceiling on the whole namespace.
+# On Autopilot, requests are what you pay for, so the quota doubles as a cost guardrail:
+# a runaway Deployment can't scale past it.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      default:
+        memory: 512Mi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: ceiling
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    pods: "30"
+    services.loadbalancers: "0" # public traffic goes through the Gateway only

@@ -1,0 +1,16 @@
+# Base: shared by every environment (k3d and GKE).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: agents
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: durable-agents
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - serviceaccounts.yaml
+  - limits.yaml
+  - networkpolicies.yaml

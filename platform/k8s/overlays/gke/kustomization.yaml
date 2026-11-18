@@ -1,0 +1,102 @@
+# GKE overlay: public HTTPS through a GKE Gateway (global external Application Load Balancer)
+# with Identity-Aware Proxy, and Workload Identity annotations on the service accounts.
+#
+# Environment-specific values (IP and certificate names, hostname, service account emails,
+# IAP client ID) come from cluster.env, which scripts/gke/apply-k8s.sh writes from Terraform
+# outputs and .env. cluster.env is gitignored; cluster.env.example shows its shape.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: agents
+
+resources:
+  - ../../base
+  - ../../../services/postgres
+  - ../../../services/temporal
+  - ../../../services/litellm
+  - ../../../../apps/worker/k8s
+  - gateway.yaml
+  - routes.yaml
+  - policies.yaml
+
+components:
+  - ../../components/placeholder-api
+
+patches:
+  - path: serviceaccount-annotations.yaml
+  - path: litellm-spot.yaml
+  - path: worker-spot.yaml
+  - path: postgres-gke.yaml
+
+configMapGenerator:
+  # Holds the values below. local-config keeps it out of the rendered output.
+  - name: cluster-settings
+    envs:
+      - cluster.env
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        config.kubernetes.io/local-config: "true"
+  # App images, written by scripts/gke/build-push.sh.
+  - name: image-settings
+    envs:
+      - images.env
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        config.kubernetes.io/local-config: "true"
+  # Adds the Vertex AI project to LiteLLM's settings (value replaced below).
+  - name: litellm-env
+    behavior: merge
+    literals:
+      - VERTEX_PROJECT=PROJECT_ID
+
+replacements:
+  - source: { kind: ConfigMap, name: image-settings, fieldPath: data.WORKER_IMAGE }
+    targets:
+      - select: { kind: Deployment, name: worker }
+        fieldPaths: ["spec.template.spec.containers.[name=worker].image"]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.PROJECT_ID }
+    targets:
+      - select: { kind: ConfigMap, name: litellm-env }
+        fieldPaths: [data.VERTEX_PROJECT]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.POSTGRES_GSA }
+    targets:
+      - select: { kind: Cluster, name: agents-pg }
+        fieldPaths: ["spec.serviceAccountTemplate.metadata.annotations.[iam.gke.io/gcp-service-account]"]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.PG_BACKUP_DESTINATION }
+    targets:
+      - select: { kind: Cluster, name: agents-pg }
+        fieldPaths: [spec.backup.barmanObjectStore.destinationPath]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.PG_BACKUP_SERVER_NAME }
+    targets:
+      - select: { kind: Cluster, name: agents-pg }
+        fieldPaths: [spec.backup.barmanObjectStore.serverName]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.GATEWAY_IP_NAME }
+    targets:
+      - select: { kind: Gateway, name: external }
+        fieldPaths: [spec.addresses.0.value]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.SSL_CERT_NAME }
+    targets:
+      - select: { kind: Gateway, name: external }
+        fieldPaths: ["spec.listeners.[name=https].tls.options.[networking.gke.io/pre-shared-certs]"]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.APP_HOSTNAME }
+    targets:
+      - select: { kind: HTTPRoute }
+        fieldPaths: [spec.hostnames.0]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.IAP_OAUTH_CLIENT_ID }
+    targets:
+      - select: { kind: GCPBackendPolicy, name: api }
+        fieldPaths: [spec.default.iap.clientID]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.API_GSA }
+    targets:
+      - select: { kind: ServiceAccount, name: api }
+        fieldPaths: ["metadata.annotations.[iam.gke.io/gcp-service-account]"]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.WORKER_GSA }
+    targets:
+      - select: { kind: ServiceAccount, name: worker }
+        fieldPaths: ["metadata.annotations.[iam.gke.io/gcp-service-account]"]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.LITELLM_GSA }
+    targets:
+      - select: { kind: ServiceAccount, name: litellm }
+        fieldPaths: ["metadata.annotations.[iam.gke.io/gcp-service-account]"]

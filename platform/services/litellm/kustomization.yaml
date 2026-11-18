@@ -1,0 +1,27 @@
+# LiteLLM gateway: the only workload that calls models (ADR-0005), with the prompt-injection
+# guardrail (ADR-0012). Needs the Secret "litellm" (master-key, database-url), created by the
+# apply scripts, and the Postgres database "litellm".
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+
+configMapGenerator:
+  # Config and guardrail code; the name hash changes with the content, so edits roll the pods.
+  - name: litellm-config
+    files:
+      - config/config.yaml
+      - config/prompt_injection.py
+  # Plain settings. Overlays merge in VERTEX_PROJECT (and may override models or location).
+  # Model IDs change over time: check what Vertex AI currently offers before relying on these.
+  # Checked 2026-11-18: this project gets 404 for every Gemini model in us-central1 (2.5 included);
+  # current models are served from the "global" location.
+  - name: litellm-env
+    literals:
+      - LITELLM_FAST_MODEL=vertex_ai/gemini-3.5-flash-lite
+      - LITELLM_SMART_MODEL=vertex_ai/gemini-3.5-flash
+      - VERTEX_LOCATION=global
+      - GUARDRAIL_FAIL_CLOSED=false
+      - LITELLM_LOG=INFO

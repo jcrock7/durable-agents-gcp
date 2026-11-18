@@ -1,0 +1,27 @@
+# GKE only: Postgres backs up to the foundation's GCS bucket using Workload Identity (wl-postgres).
+# WAL is archived continuously; scripts/gke/down.sh takes a base backup before teardown.
+# Each cluster gets its own serverName (from its creation time) so a new session never collides
+# with an earlier session's archive.
+#
+# Uses CloudNativePG's built-in Barman Cloud support, deprecated and due for removal in 1.31.
+# Before upgrading the operator past 1.30, move to the Barman Cloud plugin.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: agents-pg
+spec:
+  serviceAccountTemplate:
+    metadata:
+      annotations:
+        iam.gke.io/gcp-service-account: POSTGRES_GSA # replaced from cluster.env
+  backup:
+    retentionPolicy: 7d
+    barmanObjectStore:
+      destinationPath: PG_BACKUP_DESTINATION # replaced from cluster.env, gs://<bucket>/agents-pg
+      serverName: PG_BACKUP_SERVER_NAME # replaced from cluster.env
+      googleCredentials:
+        gkeEnvironment: true
+      wal:
+        compression: gzip
+      data:
+        compression: gzip

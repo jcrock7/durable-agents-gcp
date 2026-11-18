@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    app.kubernetes.io/name: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker # network policies let this label reach Temporal and LiteLLM
+    spec:
+      serviceAccountName: worker
+      # The worker stops polling on SIGTERM and gives running activities 20s to finish
+      # (shutdownGraceTime in src/main.ts). Anything unfinished is retried on the next worker.
+      terminationGracePeriodSeconds: 25
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # "node" in the base image
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: worker
+          image: WORKER_IMAGE # replaced per environment from images.env (see the overlays)
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: temporal:7233
+            - name: LITELLM_BASE_URL
+              value: http://litellm:4000/v1
+          # One LiteLLM virtual key per agent (LITELLM_KEY_<AGENT>), each with its own budget.
+          # Created by the apply scripts; the worker never sees the master key.
+          envFrom:
+            - secretRef:
+                name: litellm-agent-keys
+          ports:
+            - name: health
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

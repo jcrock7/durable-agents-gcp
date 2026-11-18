@@ -1,0 +1,16 @@
+# Example only. scripts/gcp/cost-guardrails.sh sets these from .env as TF_VAR_* variables,
+# so you normally don't need a terraform.tfvars file. If you create one, it is gitignored.
+
+project_id         = "your-project-id"
+region             = "us-central1"
+billing_account_id = "000000-000000-000000"
+monthly_budget_usd = 25
+alert_emails       = ["you@example.com"]
+
+forecast_alert_thresholds = [0.8, 1.0]
+actual_alert_thresholds   = [0.5, 0.9, 1.0]
+
+enforcement_mode   = "dry_run" # switch to "enforce" after the dry-run test passes
+stop_clusters_at   = 1.0       # delete GKE clusters at 100% of actual spend
+disable_billing_at = 1.2       # disable billing at 120% (hard cap); 0 turns it off
+cluster_max_hours  = 8         # delete clusters older than 8 hours; 0 turns it off

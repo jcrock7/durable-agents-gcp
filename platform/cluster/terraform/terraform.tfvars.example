@@ -1,0 +1,12 @@
+# Example only. scripts/gke/up.sh sets these from .env as TF_VAR_* variables.
+
+project_id   = "your-project-id"
+region       = "us-central1"
+state_bucket = "your-project-id-tfstate"
+cluster_name = "agents-demo"
+
+# Narrow to your own IP (curl -s ifconfig.me) for a tighter control plane.
+authorized_networks = [{ cidr = "0.0.0.0/0", name = "anywhere" }]
+
+# Leave empty to use <gateway-ip>.sslip.io
+app_hostname = ""

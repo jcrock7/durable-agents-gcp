@@ -1,0 +1,27 @@
+# Local only: mount your gcloud Application Default Credentials so LiteLLM can call Vertex AI.
+# The Secret gcp-adc is created by scripts/local/apply-k8s.sh from
+# ~/.config/gcloud/application_default_credentials.json and never leaves your machine.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: litellm
+spec:
+  template:
+    spec:
+      containers:
+        - name: litellm
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/google/adc.json
+          volumeMounts:
+            - name: gcp-adc
+              mountPath: /var/secrets/google
+              readOnly: true
+      volumes:
+        - name: gcp-adc
+          secret:
+            secretName: gcp-adc
+            optional: true
+            items:
+              - key: adc.json
+                path: adc.json

@@ -1,0 +1,32 @@
+# Install: scripts/local/install-git-hooks.sh
+# Run manually: pre-commit run --all-files
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+        exclude: '\.ps1$'
+
+  # Block files that must never be committed, even if .gitignore is bypassed (git add -f)
+  - repo: local
+    hooks:
+      - id: forbid-sensitive-files
+        name: Forbid secrets, tfstate, tfvars, kubeconfig
+        language: fail
+        entry: "Sensitive file staged — remove it (see docs/SETUP.md section 4)"
+        files: '(^|/)(\.env(\..+)?|.*\.tfstate(\..+)?|.*\.tfvars(\.json)?|kubeconfig|.*\.kubeconfig|application_default_credentials\.json|.*credentials.*\.json|.*service-account.*\.json)$'
+        exclude: '(\.env\.example|\.tfvars\.example)$'

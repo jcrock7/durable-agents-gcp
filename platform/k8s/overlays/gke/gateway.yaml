@@ -1,0 +1,28 @@
+# The only public entry point. GKE turns this into a global external Application Load Balancer
+# on the reserved IP, terminating TLS with the Google-managed certificate (both from Terraform).
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: external
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+  addresses:
+    - type: NamedAddress
+      value: GATEWAY_IP_NAME # replaced from cluster.env
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        options:
+          networking.gke.io/pre-shared-certs: SSL_CERT_NAME # replaced from cluster.env
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same

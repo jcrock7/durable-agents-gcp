@@ -12,6 +12,7 @@ How this Windows 11 laptop's dev environment is configured: VS Code, PowerShell,
 | Herdr | — | 0.9.5 (`~/.local/bin`) |
 | gcloud | 594.0.0 (user installer, `%LOCALAPPDATA%\Google\Cloud SDK`) | 594.0.0 (`google-cloud-cli` apt package) |
 | GKE auth plugin | gcloud component | apt package |
+| Node.js | v26 (`C:\Program Files\nodejs`) | v26.13.1 LTS via fnm 1.39.0 |
 | Cluster | k3d `gke-prep-cluster` at `127.0.0.1:6550` | k3d `gke-prep-cluster` at `0.0.0.0:6550` |
 
 ---
@@ -348,7 +349,68 @@ gcloud container clusters get-credentials <cluster> --region <region> --project 
 kubectl get nodes
 ```
 
-## 10. WSL: Herdr
+## 10. WSL: Node.js (fnm)
+
+Node is installed inside Linux with [fnm](https://github.com/Schniz/fnm), a Node version manager, in the home folder with no sudo. Before this, WSL had no Node: `npm` and `npx` were the Windows copies, reached through the Windows PATH, which are slow on Linux files and can behave oddly there.
+
+### Install fnm and Node LTS
+
+fnm's install script needs `unzip`, which this Ubuntu doesn't have, so the release zip is unpacked with Python instead:
+
+```bash
+FNM_DIR=~/.local/share/fnm
+mkdir -p "$FNM_DIR"
+t=$(mktemp -d)
+curl -fsSL https://github.com/Schniz/fnm/releases/latest/download/fnm-linux.zip -o "$t/fnm.zip"
+python3 -I -m zipfile -e "$t/fnm.zip" "$t/x"
+install -m 755 "$t/x/fnm" "$FNM_DIR/fnm"
+rm -rf "$t"
+
+"$FNM_DIR/fnm" install --lts
+"$FNM_DIR/fnm" default lts-latest
+```
+
+### Shell setup
+
+Two pieces, so that both terminals and non-interactive tools (scripts, agents, `bash -lc …`) find Linux Node ahead of the Windows copy.
+
+End of `~/.profile` (backup: `~/.profile.bak-fnm`), for login shells, including non-interactive ones:
+
+```bash
+# Node.js via fnm: put fnm and the default Node on PATH for all login shells
+# (scripts, tools). Interactive shells get per-project switching from ~/.bashrc.
+export FNM_DIR="$HOME/.local/share/fnm"
+if [ -d "$FNM_DIR" ] && [ -z "$FNM_MULTISHELL_PATH" ]; then
+  PATH="$FNM_DIR:$FNM_DIR/aliases/default/bin:$PATH"
+fi
+```
+
+End of `~/.bashrc` (backup: `~/.bashrc.bak-fnm`), for terminals:
+
+```bash
+# Node.js via fnm: switch Node version on cd when a .nvmrc/.node-version exists
+export FNM_DIR="$HOME/.local/share/fnm"
+if [ -x "$FNM_DIR/fnm" ]; then
+  export PATH="$FNM_DIR:$PATH"
+  eval "$(fnm env --use-on-cd --version-file-strategy=recursive --shell bash)"
+fi
+```
+
+- The `FNM_MULTISHELL_PATH` check in `~/.profile` stops the default version from overriding the per-project switching that `~/.bashrc` already set up in login terminals.
+- Linux paths come before the Windows ones, which WSL adds at the end of PATH, so `node`, `npm` and `npx` resolve to Linux.
+
+### Everyday use
+
+```bash
+fnm list                 # installed versions
+fnm install 24           # add another version
+fnm default 24           # change the default
+echo 24 > .node-version  # pin a project; terminals switch on cd
+```
+
+- `pnpm` still resolves to the Windows copy (`/mnt/c/Users/Admin/AppData/Roaming/npm/pnpm`). For a Linux one, run `npm install -g pnpm` in WSL.
+
+## 11. WSL: Herdr
 
 [Herdr](https://herdr.dev/docs/install/) is a terminal app for running AI coding agents. Its official installer puts the binary in `~/.local/bin` and checks the download's checksum. It doesn't use sudo or edit shell files.
 

@@ -1,0 +1,43 @@
+/* Agent portal theme tokens (ADR-0021). Light is the default; set data-theme="dark" on the app root for dark. */
+.app {
+  --bg: #F2F4F7; --surface: #FFFFFF; --surface-2: #F7F8FA; --hover: #EEF1F4;
+  --border: #DDE1E6; --border-strong: #C1C7CD;
+  --text: #161B22; --text-2: #454C55; --text-3: #5A626C;
+  --accent: #0B5CAD; --on-accent: #FFFFFF; --accent-weak: #E8F0FA; --link: #0B5CAD; --link-hover: #08467F;
+  --bar: #0B5CAD; --track: #E3E7EB;
+  --ok: #1E7A34; --ok-bg: #EEF7F0; --ok-line: #B7DFC1;
+  --info: #0B5CAD; --info-bg: #EDF3FB; --info-line: #B9D0EE;
+  --warn: #8F4C00; --warn-bg: #FDF4E7; --warn-line: #EDCB97;
+  --idle: #454C55; --idle-bg: #F2F4F6; --idle-line: #D5D9DE;
+  --side-bg: #161B22; --side-line: #2C333C; --side-sel: #2C333C;
+  --scrim: rgba(13, 17, 23, 0.55);
+  --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --radius: 4px;
+  color-scheme: light;
+}
+
+.app[data-theme="dark"] {
+  --bg: #0E1116; --surface: #161B22; --surface-2: #1C222B; --hover: #222934;
+  --border: #2B323C; --border-strong: #3D4652;
+  --text: #E6E9ED; --text-2: #B4BCC6; --text-3: #9AA4AF;
+  --accent: #6CA8F0; --on-accent: #0E1116; --accent-weak: #16263A; --link: #86B8F4; --link-hover: #AFD0F8;
+  --bar: #6CA8F0; --track: #2B323C;
+  --ok: #6DD58C; --ok-bg: #12251A; --ok-line: #25553A;
+  --info: #8CBDF7; --info-bg: #142338; --info-line: #2A4A72;
+  --warn: #F2B45A; --warn-bg: #2B2013; --warn-line: #6B4A1C;
+  --idle: #B4BCC6; --idle-bg: #1F252D; --idle-line: #3A424D;
+  --side-bg: #090C10; --side-line: #232A33; --side-sel: #232A33;
+  --scrim: rgba(0, 0, 0, 0.65);
+  color-scheme: dark;
+}
+
+/* Agent colors: avatar fill, avatar background. Used only for identity, never for status. */
+.app {
+  --agent-invoice-exception-resolver: #3B82F6; --agent-invoice-exception-resolver-bg: #DBEAFE;
+  --agent-cve-remediator: #F97316;             --agent-cve-remediator-bg: #FFEDD5;
+  --agent-audit-evidence-collector: #22C55E;   --agent-audit-evidence-collector-bg: #DCFCE7;
+  --agent-finops-cost-sentinel: #6366F1;       --agent-finops-cost-sentinel-bg: #E0E7FF;
+  --agent-incident-commander: #F43F5E;         --agent-incident-commander-bg: #FFE4E6;
+  --agent-research-summarize: #A855F7;         --agent-research-summarize-bg: #F3E8FF;
+}

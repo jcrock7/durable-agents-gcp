@@ -48,8 +48,9 @@ Only the Gateway is public. Stateless pods (API, worker, LiteLLM) run on Spot ca
 | Deployment | Apply scripts now, keyless GitHub Actions deploy next; GitOps controller deferred | [0018](docs/adr/0018-deployment-gitops-deferred.md) |
 | Tools and skills | Tools as in-cluster MCP servers with per-agent allow-lists; skills as versioned instruction packages | [0020](docs/adr/0020-mcp-tools-and-skills.md) |
 | Agent portfolio | Five agents, one per reusable pattern, built on work we can back up | [0019](docs/adr/0019-pattern-agent-portfolio.md) |
+| Agent portal UI | Per-agent case workspace, Mission Control overlay, collapsible agent sidebar; light and dark themes | [0021](docs/adr/0021-agent-portal-ui.md) |
 
-All 20 decision records, including superseded ones, are in [`docs/adr/`](docs/adr/).
+All 21 decision records, including superseded ones, are in [`docs/adr/`](docs/adr/).
 
 ## Cost
 
@@ -158,6 +159,6 @@ Details: [SETUP.md §4](docs/SETUP.md#4-security--secrets-hygiene-public-repo-ru
 - [x] Agent portfolio by pattern and tool layer decided ([ADR-0019](docs/adr/0019-pattern-agent-portfolio.md), [ADR-0020](docs/adr/0020-mcp-tools-and-skills.md)); Invoice Exception Resolver designed
 - [ ] Invoice Exception Resolver: MCP tools, synthetic ERP, match engine, workflow, evals (`agents/general/invoice-exception-resolver`)
 - [x] Shared worker, agent-kit, and the first agent: research and summarize, with human review (`agents/general/research-summarize`)
-- [ ] Application: API + review UI
+- [ ] Application: API + review UI (design: [ADR-0021](docs/adr/0021-agent-portal-ui.md), [`docs/design/agent-portal`](docs/design/agent-portal/))
 - [ ] Evals in CI (promptfoo)
 - [ ] Verification scenarios scripted (worker failure, prompt injection, budget cap, approval, trace)

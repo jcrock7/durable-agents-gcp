@@ -116,6 +116,7 @@ Each significant choice has an Architecture Decision Record (ADR) in [`docs/adr/
 | [0018](adr/0018-deployment-gitops-deferred.md) | Deploy with scripts and keyless CI; GitOps controller (Argo CD) deferred | Accepted |
 | [0019](adr/0019-pattern-agent-portfolio.md) | Five agents, one per reusable pattern; financial-services agents become example applications | Proposed |
 | [0020](adr/0020-mcp-tools-and-skills.md) | Tools as in-cluster MCP servers with per-agent allow-lists; skills as versioned packages | Proposed |
+| [0021](adr/0021-agent-portal-ui.md) | Agent portal: case workspace per agent, Mission Control overlay, agent sidebar | Accepted |
 
 ## 3. Repository Layout
 

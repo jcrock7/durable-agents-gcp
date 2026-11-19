@@ -1,6 +1,6 @@
 # Invoice Exception Resolver
 
-> **Status: design, not built.** This README is the design. It becomes the agent's normal README as each milestone lands. Why this agent: [business case](business-case.md). Where it fits: [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md). How tools and skills work: [ADR-0020](../../../docs/adr/0020-mcp-tools-and-skills.md).
+> **Status: building.** M1 (MCP client, allow-list, tool loop, skill loader in [agent-kit](../../../packages/agent-kit/)) is done; M2 onward are next. This README is the design. It becomes the agent's normal README as each milestone lands. Why this agent: [business case](business-case.md). Where it fits: [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md). How tools and skills work: [ADR-0020](../../../docs/adr/0020-mcp-tools-and-skills.md).
 
 Works the invoices a three-way match rejects. It reruns the match deterministically, classifies the exception, gathers evidence from the ERP, documents and the vendor mailbox, and proposes a cited resolution. It chases the vendor or the receiving dock and waits for days if needed. A person approves anything that changes what gets paid. This is the **template agent** for [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md): the first agent built on MCP tools and skills, and the one the next four copy.
 
@@ -118,7 +118,7 @@ It also carries: exception type, action taken, amounts (from `match-engine`), ci
 
 | Milestone | Delivers | Done when |
 |---|---|---|
-| M1. Tools foundation | MCP client in `packages/agent-kit` (allow-list filter, call logging, step-limited tool loop); skill loader | Unit tests: unlisted tools dropped and refused; skill versions recorded |
+| M1. Tools foundation ✅ | MCP client in `packages/agent-kit` (allow-list filter, call logging, step-limited tool loop); skill loader | Unit tests: unlisted tools dropped and refused; skill versions recorded |
 | M2. Synthetic ERP | `erp` database, roles, generator, document store; `erp-read`, `erp-write`, `docs` servers deployed by Kustomize | `verify` script lists each server's tools and runs one call per server |
 | M3. Match engine | `platform/mcp/match-engine` with HPA | Unit tests for every exception type; load test shows HPA scaling on k3d |
 | M4. Workflow | Steps 1–7, review gate, waits, reminders, queue fan-out | Time-skipping workflow tests: every route, timeouts, crash recovery |
@@ -127,5 +127,5 @@ It also carries: exception type, action taken, amounts (from `match-engine`), ci
 ## Open questions
 
 - **LiteLLM MCP gateway** as a second allow-list layer: check on the pinned LiteLLM version after M1 ([ADR-0020](../../../docs/adr/0020-mcp-tools-and-skills.md)).
-- **MCP client in the AI SDK:** confirm the client API in the AI SDK version the repo uses, or use the official MCP SDK client directly.
+- ~~**MCP client in the AI SDK**~~ Settled in M1: agent-kit uses the official MCP SDK client (`@modelcontextprotocol/sdk` 1.32.2) and turns allowed tools into AI SDK tools itself, so the allow-list and call log sit in one place.
 - **Where documents live on GKE:** a read-only volume works locally; on GKE consider a Cloud Storage bucket mounted read-only through the GCS FUSE CSI driver.

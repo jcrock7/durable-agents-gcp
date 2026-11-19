@@ -2,7 +2,7 @@
   "name": "@agents/agent-kit",
   "version": "0.1.0",
   "private": true,
-  "description": "Shared agent plumbing: LiteLLM model clients, Temporal retry presets, error mapping and the human review gate",
+  "description": "Shared agent plumbing: LiteLLM model clients, MCP tools with allow-lists, skills, Temporal retry presets, error mapping and the human review gate",
   "type": "module",
   "exports": {
     ".": {
@@ -19,9 +19,13 @@
   ],
   "dependencies": {
     "@ai-sdk/openai-compatible": "3.0.84",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@temporalio/activity": "1.25.0",
     "@temporalio/common": "1.25.0",
     "@temporalio/workflow": "1.25.0",
     "ai": "7.0.162"
+  },
+  "devDependencies": {
+    "zod": "4.6.7"
   }
 }

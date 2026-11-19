@@ -1,6 +1,6 @@
 # Invoice Exception Resolver
 
-> **Status: building.** M1 (MCP client, allow-list, tool loop, skill loader in [agent-kit](../../../packages/agent-kit/)), M2 (synthetic ERP, document store, and the `erp-read`, `erp-write` and `docs` MCP servers) and M3 (the match engine, scaling 1 to 10 replicas under load) are done, all in [platform/mcp](../../../platform/mcp/); M4, the workflow, is next. This README is the design. It becomes the agent's normal README as each milestone lands. Why this agent: [business case](business-case.md). Where it fits: [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md). How tools and skills work: [ADR-0020](../../../docs/adr/0020-mcp-tools-and-skills.md).
+> **Status: building.** M1 (MCP client, allow-list, tool loop, skill loader in [agent-kit](../../../packages/agent-kit/)), M2 (synthetic ERP, document store, and the `erp-read`, `erp-write` and `docs` MCP servers) and M3 (the match engine, scaling 1 to 10 replicas under load) are done, all in [platform/mcp](../../../platform/mcp/), and M4 (the workflow, approval, waits and queue) runs on k3d; M5, evals on the labelled cases, is next. This README is the design. It becomes the agent's normal README as each milestone lands. Why this agent: [business case](business-case.md). Where it fits: [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md). How tools and skills work: [ADR-0020](../../../docs/adr/0020-mcp-tools-and-skills.md).
 
 Works the invoices a three-way match rejects. It reruns the match deterministically, classifies the exception, gathers evidence from the ERP, documents and the vendor mailbox, and proposes a cited resolution. It chases the vendor or the receiving dock and waits for days if needed. A person approves anything that changes what gets paid. This is the **template agent** for [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md): the first agent built on MCP tools and skills, and the one the next four copy.
 
@@ -31,16 +31,16 @@ exception queue ──► resolveExceptionQueue (parent workflow, fan-out, max N
 
 | Step | Runs as | Model / tool |
 |---|---|---|
-| 1. Match | activity `runMatch` | `match-engine:run_match`, `match-engine:check_duplicate` |
-| 2. Read invoice | activity `readInvoice` | `docs:read_pdf_text` → `fast` (text in, structured fields out; text passes the gateway's injection check). `docs:read_media_file` stays available for a model that reads the PDF directly |
-| 3. Gather evidence | activity `gatherEvidence`: a model-driven loop over read-only tools, max 4 rounds | `fast` + `erp-read:*`, `docs:read_text_file` |
-| 4. Propose | activity `proposeResolution` | `smart`, structured output. Citations and action validated. Amounts recomputed by `match-engine:compute_adjustment` |
-| 5. Route | workflow code | Rules from `agent.config.ts`: action, amount and flags |
-| Review | Temporal update `review` (`ReviewGate`) | A person: approve, edit the action, or reject with a note |
-| Send message | activity `queueMessage` | `fast` drafts from a template → `erp-write:queue_message` |
-| Wait | workflow timers and signals | Signal `vendorReplied`; daily timer re-runs `run_match` while waiting for a receipt |
-| 6. Post | activity `postResolution`, only after approval where required | `erp-write:post_resolution` |
-| 7. Confirm | activity `runMatch` | `match-engine:run_match`; the invoice must now match or be on hold |
+| 1. Match | activity `runMatch` | `match-engine:run_match` (includes the duplicate check). If the invoice now matches, the case closes |
+| 2. Read invoice | activity `readInvoice` (first round) | `docs:read_pdf_text` → `fast` (text in, structured fields out; text passes the gateway's injection check). The model also reports text addressed to the system (`untrusted-content`); if it finds any, the invoice is held and the case ends as `blocked` |
+| 3. Gather evidence | activity `gatherEvidence`: a model-driven loop over read-only tools, at most 4 rounds | `fast` + the model-visible tools (`erp-read`, `docs`, `match-engine`). Evidence E1 is the match, E2 the invoice text, E3… each tool result the model asked for |
+| 4. Propose | activity `proposeResolution` | `smart`, structured output. Citations checked against the evidence list; the amount comes from `match-engine:compute_adjustment`, never the model |
+| 5. Route | workflow code ([`route.ts`](src/route.ts)) | Rules from `agent.config.ts`: fraud signals, `escalate` and low confidence go straight to a person (invoice held); `accept_variance`, `short_pay` and `reject_duplicate`, amounts over $1,000, uncited proposals and classifications the match engine disagrees with need approval |
+| Review | Temporal update `review` (`ReviewGate`) | A person approves, or sends it back with feedback for a revised proposal (at most 2 revisions). No decision in 7 days: held, `expired` |
+| Send message | activities `draftMessage` → `queueMessage` | `fast` + `vendor-correspondence` drafts it; `erp-write:queue_message` queues it, only after approval where needed |
+| 6. Post | activity `postResolution` | `erp-write:post_resolution`, with the approver, the evidence references and the run id |
+| 7. Confirm | activity `confirmInvoice` | `erp-read:get_invoice`: the ERP must now show the invoice resolved or on hold. (Re-running the match would still show the original variance: accepting a variance doesn't change the invoice) |
+| Wait | workflow timers and signal `recheck` | For `wait_for_receipt` and `request_receipt_entry`: hold, re-match daily or at once on `recheck`, remind on days 3 and 7, escalate on day 10. When the receipt appears, a new round starts at step 1 (at most 3 rounds) |
 
 ## Tools
 
@@ -68,12 +68,12 @@ Shared skills in `packages/skills/`, agent skills in `skills/`, each with a `SKI
 
 Policy values (tolerances, thresholds, reminder days) live in `agent.config.ts`, not in the skills.
 
-## Configuration (planned `agent.config.ts`)
+## Configuration ([`agent.config.ts`](src/agent.config.ts))
 
 | Setting | Prototype value | Meaning |
 |---|---|---|
 | `models` | `extract: fast`, `evidence: fast`, `propose: smart`, `draft: fast` | LiteLLM aliases per step |
-| `tools` | The `server:tool` pairs in the table above | Allow-list. The MCP client drops anything else |
+| `tools` | The `server:tool` pairs in the table above; `erp-write` tools are `workflowOnly` | Allow-list. The MCP client drops anything else and keeps write tools from the model |
 | `tolerance.pricePct` / `tolerance.priceCents` | 2% / 5,000 (the lower applies) | Price variance auto-accepted by the match itself. Example values, set per company |
 | `tolerance.quantity` | 0 | Quantity must match exactly |
 | `approval.amountCents` | 100,000 | Messages and actions above $1,000 need approval |
@@ -114,9 +114,47 @@ Everything is synthetic. Vendor names are generated, not real companies.
 
 ## Result
 
-`status`: `resolved` (posted and confirmed by re-match), `on_hold` (approved hold, for example awaiting a credit memo), `escalated` (sent to a person: low confidence, fraud flag, missing evidence or out of rounds), `rejected_by_reviewer`, `blocked` (guardrail), `expired` (no reviewer within 7 days).
+`status`: `resolved` (posted and confirmed in the ERP), `on_hold` (posted with the invoice held, for example awaiting a credit memo), `escalated` (handed to a person with the invoice held: fraud signal, low confidence, missing evidence, no receipt after 10 days, or out of rounds), `rejected_by_reviewer`, `blocked` (guardrail, or instructions found in the invoice), `expired` (no reviewer within 7 days).
 
-It also carries: exception type, action taken, amounts (from `match-engine`), cited evidence IDs, approver, rounds, human touches, tokens and estimated cost, and skill and prompt versions.
+It also carries: exception type, action taken, amount (from `match-engine`), cited evidence references, approver, rounds, human touches, tool calls, tokens per step, and skill and prompt versions. While it runs, the `caseState` query returns everything the portal's case view shows: stage, timeline, match findings, evidence, proposal, route and reasons, the queued message, every tool call record, skill versions and token usage.
+
+Workflow ids: a case is `inv-<number>` (INV-20931 → `inv-20931`), the ids the portal shows.
+
+## Run it
+
+On k3d after `scripts/local/apply-k8s.sh`, with the Temporal CLI inside the Temporal pod:
+
+```bash
+T="kubectl -n agents exec temporal-0 -- temporal"
+
+# One case
+$T workflow start --task-queue invoice-exception-resolver --type resolveInvoiceException --workflow-id inv-20931 \
+  --input '{"exceptionId":"EX-3000","invoiceId":"INV-20931"}'
+$T workflow query --workflow-id inv-20931 --name caseState -o json | jq '.queryResult[0] | {stage, status, route, timeline}'
+
+# Approve, or send back with feedback
+$T workflow update execute --workflow-id inv-20931 --name review --input '{"approved":true,"reviewer":"ap.lead"}'
+$T workflow update execute --workflow-id inv-20931 --name review --input '{"approved":false,"feedback":"Ask for a credit memo instead","reviewer":"ap.lead"}'
+
+# The queue: every open exception, at most 10 being worked at once
+$T workflow start --task-queue invoice-exception-resolver --type resolveExceptionQueue --workflow-id exception-queue-1 --input '{"limit":50}'
+
+# The outside world: a receipt arrives, or the vendor replies (the case re-checks at once)
+scripts/local/erp-event.sh receipt INV-20123
+scripts/local/erp-event.sh reply INV-20123 "The goods were delivered on 12 Nov."
+
+# Start again from the seeded ERP
+scripts/local/erp-load.sh
+```
+
+The queue gives a case's slot back as soon as the case waits (for a person or a receipt) or finishes, so long waits never block it, and it finishes once every case has reached that point. Cases outlive the queue.
+
+**Models.** With `LOCAL_MODELS=mock` the gateway answers with the smallest valid object for each schema, so every case proposes `accept_variance` with no valid citations and waits for review. That exercises the workflow, tools, approvals, durability and the ERP writes, but not judgment. `LOCAL_MODELS=flash-lite` or `full` uses Gemini through the same gateway; the quality of the proposals is what M5's evals measure.
+
+## What has been checked (M4)
+
+- **Workflow tests** ([`test/workflow.test.ts`](test/workflow.test.ts), Temporal's time-skipping server, activities mocked): post without a person; approval of an over-threshold variance with the approver recorded; send-back and revision; rejection after too many send-backs; 7-day expiry; low confidence and fraud signals escalated without approval; instructions in the PDF and a gateway guardrail block both end as `blocked` with the invoice held; uncited proposals sent to a person; an invoice that already matches closes at once; the receipt wait (daily re-match, the `recheck` signal, reminders on days 3 and 7, escalation on day 10, a second round when the receipt appears); a worker restart mid-case with no finished step repeated; the queue fanning out 12 cases that outlive it. Plus unit tests for the routing rules and citation checks.
+- **On k3d, with the real MCP servers and the mock models:** INV-20931 went match → read → evidence → propose → route (to a person: the action, the $1,284.00 amount and the uncited proposal) → approval → post → confirm, and the ERP shows it resolved with the approver and run id. A 20-case queue ran with the worker pod deleted mid-run; all 20 reached review on the replacement pod. The four skills load from the worker image.
 
 ## Demo (target, about 3 minutes)
 
@@ -135,7 +173,7 @@ It also carries: exception type, action taken, amounts (from `match-engine`), ci
 | M1. Tools foundation ✅ | MCP client in `packages/agent-kit` (allow-list filter, call logging, step-limited tool loop); skill loader | Unit tests: unlisted tools dropped and refused; skill versions recorded |
 | M2. Synthetic ERP ✅ | `erp` database, roles, generator, document store; `erp-read`, `erp-write`, `docs` servers deployed by Kustomize ([platform/mcp](../../../platform/mcp/)) | `scripts/local/mcp-verify.sh` lists each server's tools and runs one call per server (8 of 8 checks pass on k3d) |
 | M3. Match engine ✅ | `platform/mcp/match-engine` with HPA | Unit tests for every exception type (96 of 96 seeded cases, 892 clean invoices match); `scripts/local/match-engine-load.sh` scaled 1 → 10 replicas on k3d with no errors ([results](../../../platform/mcp/README.md#match-engine-the-deterministic-part-and-the-part-that-scales)) |
-| M4. Workflow | Steps 1–7, review gate, waits, reminders, queue fan-out | Time-skipping workflow tests: every route, timeouts, crash recovery |
+| M4. Workflow ✅ | Steps 1–7, review gate, waits, reminders, queue fan-out, skills | Time-skipping workflow tests: every route, timeouts, crash recovery ([what was checked](#what-has-been-checked-m4)) |
 | M5. Evals and demo | promptfoo suite on the labelled set; demo script | Success measures in the [business case](business-case.md#prototype-scope-and-success-measures) met |
 
 ## Open questions

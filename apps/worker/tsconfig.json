@@ -5,5 +5,5 @@
     "outDir": "dist"
   },
   "include": ["src"],
-  "references": [{ "path": "../../packages/agent-kit" }, { "path": "../../agents/general/research-summarize" }]
+  "references": [{ "path": "../../packages/agent-kit" }, { "path": "../../agents/general/research-summarize" }, { "path": "../../agents/general/invoice-exception-resolver" }]
 }

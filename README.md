@@ -74,7 +74,7 @@ Organized by what things belong to: one folder per agent, and the platform by la
 ```text
 .
 ├── agents/                       # By industry, then one self-contained folder per agent (agents/README.md)
-│   ├── general/                  # Industry-neutral: research-summarize, invoice-exception-resolver (building), audit-evidence-collector
+│   ├── general/                  # Industry-neutral: research-summarize, invoice-exception-resolver (runs on k3d; evals next), audit-evidence-collector
 │   ├── financial-services/       # Example applications of the patterns, with business cases
 │   └── technology/, manufacturing/, healthcare/   # Technology: cve-remediator, finops-cost-sentinel, incident-commander (planned)
 ├── apps/
@@ -82,7 +82,8 @@ Organized by what things belong to: one folder per agent, and the platform by la
 │   ├── mcp-docs/                 # Custom MCP server: the synthetic document store (+ Dockerfile)
 │   └── mcp-match-engine/         # Custom MCP server: deterministic three-way match, scaled by an HPA
 ├── packages/
-│   └── agent-kit/                # Shared: LiteLLM clients, MCP tools + allow-lists, skills, retry presets, review gate
+│   ├── agent-kit/                # Shared: LiteLLM clients, MCP tools + allow-lists, skills, retry presets, review gate
+│   └── skills/                   # Shared agent skills (SKILL.md): untrusted-content, vendor-correspondence
 ├── platform/                     # Everything deployed to GCP, by layer (platform/README.md)
 │   ├── cost-guardrails/          # Deployed first: budget, alerts, enforcer function, cluster time limit
 │   ├── foundation/terraform/     # Persistent: registry, secrets, service accounts, IAP, CI federation
@@ -160,7 +161,7 @@ Details: [SETUP.md §4](docs/SETUP.md#4-security--secrets-hygiene-public-repo-ru
 - [x] Platform services: Postgres (CloudNativePG + pgvector), Temporal, LiteLLM with prompt-injection guardrail (`platform/services`)
 - [x] Prototype agent portfolio and business cases ([ADR-0017](docs/adr/0017-prototype-agent-portfolio.md))
 - [x] Agent portfolio by pattern and tool layer decided ([ADR-0019](docs/adr/0019-pattern-agent-portfolio.md), [ADR-0020](docs/adr/0020-mcp-tools-and-skills.md)); Invoice Exception Resolver designed
-- [ ] Invoice Exception Resolver: MCP tools, synthetic ERP and match engine done (M1-M3); workflow and evals next (`agents/general/invoice-exception-resolver`)
+- [ ] Invoice Exception Resolver: MCP tools, synthetic ERP, match engine and workflow done (M1-M4); evals next (`agents/general/invoice-exception-resolver`)
 - [x] Shared worker, agent-kit, and the first agent: research and summarize, with human review (`agents/general/research-summarize`)
 - [ ] Application: API + review UI (design: [ADR-0021](docs/adr/0021-agent-portal-ui.md), [`docs/design/agent-portal`](docs/design/agent-portal/))
 - [ ] Evals in CI (promptfoo)

@@ -30,6 +30,7 @@ try {
 | Allow-list | `policy.allow` lists `server:tool` pairs. Other tools are dropped from `tools/list` and refused if called, with the non-retryable `ToolNotAllowed` failure |
 | Write tools never reach the model | `policy.workflowOnly` pairs may be called by workflow or activity code, but are not offered to the model and are refused if it asks for them |
 | Every call recorded | `toolbox.calls` holds a `ToolCallRecord` per call: `server:tool`, caller (`workflow`, `activity` or `model`), arguments, outcome (`ok`, `error`, `refused`), result size, duration. Results themselves are not kept. Return the records from the activity so they land in the workflow history |
+| Results when you need them | `onResult(record, result)` receives each result that ran, for an activity that cites tool output as evidence |
 | Tool errors vs. failures | A tool that reports an error returns `isError` and is recorded as `error`; the model sees the message. A transport failure throws and is retried by the activity's policy |
 | Bounded loops | `runToolLoop` stops after `maxSteps` model steps and reports `stoppedAtLimit` |
 

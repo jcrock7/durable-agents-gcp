@@ -12,6 +12,11 @@ export interface McpToolboxOptions {
   maxResultChars?: number;
   /** Called after every call, refused ones included. Use it to log or trace. */
   onCall?: (record: ToolCallRecord) => void;
+  /**
+   * Called with the result of every call that ran. Records keep only result sizes; an activity
+   * that needs the content (for example to cite it as evidence) collects it here.
+   */
+  onResult?: (record: ToolCallRecord, result: McpCallResult) => void;
 }
 
 /** A tool the agent may use, as listed by its server. */
@@ -76,13 +81,15 @@ export class McpToolbox {
 
     try {
       const result = await (await this.connection(server)).callTool(name, args, signal);
-      this.record({
+      const record: ToolCallRecord = {
         ...base,
         outcome: result.isError ? "error" : "ok",
         resultChars: resultText(result, Number.MAX_SAFE_INTEGER).length,
         durationMs: Date.now() - startedAt,
         ...(result.isError ? { error: resultText(result, 500) } : {}),
-      });
+      };
+      this.record(record);
+      this.options.onResult?.(record, result);
       return result;
     } catch (error) {
       this.record({ ...base, outcome: "error", error: String(error instanceof Error ? error.message : error), durationMs: Date.now() - startedAt });

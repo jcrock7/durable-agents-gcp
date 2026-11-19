@@ -12,3 +12,6 @@ scripts
 **/*.md
 **/test
 **/evals
+# Skills (SKILL.md) are runtime files the agents load, so they go into the image.
+!packages/skills/*/SKILL.md
+!agents/*/*/skills/*/SKILL.md

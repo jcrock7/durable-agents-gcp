@@ -99,6 +99,8 @@ sleep 5   # until progress shows "drafting"
 kubectl -n agents delete pod -l app.kubernetes.io/name=worker --grace-period=0 --force
 ```
 
+With `LOCAL_MODELS=mock`, set `MOCK_LATENCY_SECONDS=20` first so the draft call is still running when the pod dies.
+
 Within about 30 seconds the replacement pod picks the run up. The history shows `writeDraft` with `attempt=2` and the last failure `activity Heartbeat timeout`; planning, searches and reads ran once.
 
 ```bash

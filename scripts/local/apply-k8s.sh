@@ -21,7 +21,18 @@ ctx="$(kubectl config current-context 2>/dev/null || true)"
 # Values for the overlay (gitignored).
 [[ -n "${PROJECT_ID:-}" && "$PROJECT_ID" != "your-project-id" ]] \
   || warn "PROJECT_ID not set in .env: LiteLLM won't be able to call Vertex AI"
-printf 'VERTEX_PROJECT=%s\n' "${PROJECT_ID:-unset}" > "${OVERLAY}/local.env"
+case "${LOCAL_MODELS:=flash-lite}" in
+  flash-lite) fast=vertex_ai/gemini-3.5-flash-lite; smart=vertex_ai/gemini-3.5-flash-lite ;;
+  full)       fast=vertex_ai/gemini-3.5-flash-lite; smart=vertex_ai/gemini-3.5-flash ;;
+  mock)       fast=mock/fast;                       smart=mock/smart ;;
+  *) die "LOCAL_MODELS must be flash-lite, full or mock (got '${LOCAL_MODELS}')" ;;
+esac
+{
+  printf 'VERTEX_PROJECT=%s\n' "${PROJECT_ID:-unset}"
+  printf 'LITELLM_FAST_MODEL=%s\nLITELLM_SMART_MODEL=%s\n' "$fast" "$smart"
+  printf 'MOCK_LATENCY_SECONDS=%s\nMOCK_FAILURE_RATE=%s\n' "${MOCK_LATENCY_SECONDS:-2}" "${MOCK_FAILURE_RATE:-0}"
+} > "${OVERLAY}/local.env"
+log "models (LOCAL_MODELS=${LOCAL_MODELS}): fast=${fast}, smart=${smart}"
 
 # Build the worker image from this checkout and push it to the k3d registry (writes images.env).
 "${REPO_ROOT}/scripts/local/build-push.sh" worker

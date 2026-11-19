@@ -132,9 +132,19 @@ $T workflow query --workflow-id research-1 --name progress -o json | jq '.queryR
 | `$T workflow update execute --workflow-id research-1 --name review --input '{"approved":true,"reviewer":"me"}'` | `accepted: true, draftVersion: 1` |
 | `$T workflow result --workflow-id research-1 -o json \| jq .result.status` | `"approved"` |
 | Temporal UI (http://localhost:8233) | The run, with each activity: planQueries, searchWikipedia ×3, readArticle ×5, writeDraft |
-| Spend: `psql litellm` query in [1.2](#12-verify) | Rows for `vertex_ai/gemini-…`, attributed to key `agent-research-summarize` |
+| Spend: `psql litellm` query in [1.2](#12-verify) | Rows for `vertex_ai/gemini-…` (`mock/…` with `LOCAL_MODELS=mock`), attributed to key `agent-research-summarize` |
 
 To show durability, kill the worker during a run and watch it resume: [the demo steps](../agents/general/research-summarize/README.md#demo-kill-the-worker-mid-run).
+
+**Models on k3d.** `LOCAL_MODELS` in `.env` picks what the `fast` and `smart` aliases call, then re-run `scripts/local/apply-k8s.sh` (about a minute; LiteLLM restarts):
+
+| `LOCAL_MODELS` | Models | Use it for |
+|---|---|---|
+| `flash-lite` (default) | Gemini Flash-Lite for both aliases | Everyday testing with real answers, at the lowest token price |
+| `full` | Flash-Lite and Flash, as on GKE | Checking answer quality before a GKE session |
+| `mock` | No model calls: canned answers that match each step's output schema, $0 | Workflows, retries, review, crash recovery, UI work |
+
+With `mock`, the summary reads `Mock summary [1].`, and the guardrail blocks any input containing `ignore previous instructions`, so the blocking path can be tested too. `MOCK_LATENCY_SECONDS` (default 2) makes each call wait; set it to 20 for the crash demo. `MOCK_FAILURE_RATE` (for example 0.3) fails that share of calls with HTTP 503 to exercise retries. Details: [services README](../platform/services/README.md#mock-models).
 
 Tests run without a cluster: `pnpm install && pnpm test` (TypeScript build, unit tests, and workflow tests on Temporal's time-skipping server, about 30 seconds).
 
@@ -238,7 +248,7 @@ The foundation layer and the guardrails stay up; they cost cents per month.
 |---|---|---|
 | A script stops with no error message | A command failed inside a pipe | Run it with tracing to find the line: `bash -x scripts/<path>.sh` |
 | `kubectl context is '…', expected …` | kubectl points at the other environment | Local: `kubectl config use-context k3d-agents-local`. GKE: run the `get-credentials` command the error prints |
-| LiteLLM returns 404 `Publisher model … was not found` | The model ID or location isn't available to the project | Change `LITELLM_FAST_MODEL`, `LITELLM_SMART_MODEL` or `VERTEX_LOCATION` in `platform/services/litellm/kustomization.yaml`; see [services README](../platform/services/README.md#things-to-check-and-maintain) |
+| LiteLLM returns 404 `Publisher model … was not found` | The model ID or location isn't available to the project | Change `LITELLM_FAST_MODEL`, `LITELLM_SMART_MODEL` or `VERTEX_LOCATION` in `platform/services/litellm/kustomization.yaml` (on k3d, the model IDs are in `scripts/local/apply-k8s.sh`); see [services README](../platform/services/README.md#things-to-check-and-maintain) |
 | Forgot the LiteLLM UI password | It's stored only as a hash | Clear it: `kubectl -n agents exec agents-pg-1 -c postgres -- psql litellm -c "update \"LiteLLM_UserTable\" set password = null where user_id = 'ui-admin'"`, then re-run `apply-k8s.sh` for a new invitation link |
 | Worker `ImagePullBackOff` with `no such host` (k3d) | The image names a registry the cluster doesn't know | Re-run `scripts/local/apply-k8s.sh`; build-push reads the registry name from `k3d registry list` |
 | Worker stuck in `CreateContainerConfigError` | Secret `litellm-agent-keys` doesn't exist yet | It appears when `apply-k8s.sh` reaches the agent-key step; if that failed, re-run it |

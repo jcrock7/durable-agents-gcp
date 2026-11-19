@@ -30,6 +30,12 @@ router_settings:
 litellm_settings:
   drop_params: true
   request_timeout: 120
+  # Models named mock/<anything> answer with canned output and cost nothing (mock_llm.py in this
+  # folder). Only used when LITELLM_FAST_MODEL / LITELLM_SMART_MODEL point at them (k3d,
+  # LOCAL_MODELS=mock).
+  custom_provider_map:
+    - provider: mock
+      custom_handler: mock_llm.mock_llm
 
 guardrails:
   # Screens untrusted input (user and tool messages) for prompt injection with a cheap model.

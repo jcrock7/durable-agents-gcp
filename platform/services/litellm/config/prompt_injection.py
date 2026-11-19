@@ -8,6 +8,8 @@ Settings (environment):
   GUARDRAIL_MODEL        classifier model, default: value of LITELLM_FAST_MODEL
   GUARDRAIL_FAIL_CLOSED  "true" blocks requests when the classifier itself fails (default "false")
   GUARDRAIL_MAX_CHARS    most recent characters of untrusted text to classify (default 20000)
+  MOCK_INJECTION_PHRASE  with a mock classifier model (mock/...), the phrase that counts as an
+                         injection (default "ignore previous instructions")
 """
 
 import json
@@ -62,6 +64,15 @@ def parse_verdict(raw):
     return {"injection": data["injection"], "reason": str(data.get("reason", ""))[:300]}
 
 
+def mock_verdict(text):
+    """Classifier stand-in for mock models (mock_llm.py): flags one trigger phrase, so the
+    blocking path can be tested without a model call."""
+    phrase = os.environ.get("MOCK_INJECTION_PHRASE", "ignore previous instructions").lower()
+    if phrase and phrase in text.lower():
+        return {"injection": True, "reason": f"mock classifier: found trigger phrase {phrase!r}"}
+    return {"injection": False, "reason": "mock classifier"}
+
+
 class PromptInjectionCheck(CustomGuardrail):
     def __init__(self, **kwargs):
         self.classifier_model = os.environ.get("GUARDRAIL_MODEL") or os.environ.get(
@@ -72,6 +83,8 @@ class PromptInjectionCheck(CustomGuardrail):
         super().__init__(**kwargs)
 
     async def classify(self, text):
+        if self.classifier_model.startswith("mock/"):
+            return mock_verdict(text)
         response = await litellm.acompletion(
             model=self.classifier_model,
             messages=[

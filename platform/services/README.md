@@ -49,6 +49,14 @@ Inside the cluster, apps use `temporal:7233`, `http://litellm:4000` and `agents-
 
 [`litellm/config/prompt_injection.py`](litellm/config/prompt_injection.py) runs before every chat request. It sends the untrusted parts of the conversation (user messages and tool results, which include retrieved documents) to the `fast` model with a strict JSON prompt, and rejects the request with HTTP 400 if the model reports an injection attempt. If the classifier itself fails, the request continues by default and a warning is logged. Set `GUARDRAIL_FAIL_CLOSED=true` in `litellm-env` to block instead.
 
+With a mock classifier model (`mock/…`), the guardrail makes no call and flags only the phrase in `MOCK_INJECTION_PHRASE` (default `ignore previous instructions`).
+
+## Mock models
+
+[`litellm/config/mock_llm.py`](litellm/config/mock_llm.py) is a LiteLLM custom provider: any model named `mock/<anything>` answers after `MOCK_LATENCY_SECONDS` without calling Vertex AI. For structured output it returns the smallest object that satisfies the request's JSON schema (required fields, array minimums, enums, number bounds), so agents parse it like a real answer; otherwise it returns a short sentence. `MOCK_FAILURE_RATE` fails that share of calls with HTTP 503. Spend logs record the calls at $0 under the agent's key, so budgets and attribution can still be checked.
+
+It is selected only on k3d, with `LOCAL_MODELS=mock` in `.env` (see [RUNBOOK §1.3](../../docs/RUNBOOK.md#13-run-the-research-agent)); GKE always uses the Vertex AI models in `litellm/kustomization.yaml`. At startup LiteLLM warns that the `mock` deployments ignore `vertex_project` and `vertex_location`; that's expected.
+
 Tests run inside the pinned LiteLLM image:
 
 ```bash
@@ -58,7 +66,7 @@ docker run --rm -v "$PWD/platform/services/litellm:/svc" -w /svc --entrypoint py
 
 ## Things to check and maintain
 
-- **Model IDs** (`LITELLM_FAST_MODEL`, `LITELLM_SMART_MODEL` in `litellm/kustomization.yaml`) change as Google releases and retires models. Defaults are `gemini-3.5-flash-lite` and `gemini-3.5-flash` on the `global` location (`VERTEX_LOCATION`); in November 2026 this project got 404 for every Gemini model in `us-central1`. To see what your project can call, try `generateContent` against `https://aiplatform.googleapis.com/v1/projects/<project>/locations/global/publishers/google/models/<model>`.
+- **Model IDs** (`LITELLM_FAST_MODEL`, `LITELLM_SMART_MODEL` in `litellm/kustomization.yaml`) change as Google releases and retires models. Defaults are `gemini-3.5-flash-lite` and `gemini-3.5-flash` on the `global` location (k3d uses Flash-Lite for both unless `LOCAL_MODELS=full`; IDs in `scripts/local/apply-k8s.sh`) (`VERTEX_LOCATION`); in November 2026 this project got 404 for every Gemini model in `us-central1`. To see what your project can call, try `generateContent` against `https://aiplatform.googleapis.com/v1/projects/<project>/locations/global/publishers/google/models/<model>`.
 - **CloudNativePG backups** use the operator's built-in Barman Cloud support, which is deprecated and will be removed in 1.31. Move to the Barman Cloud plugin before upgrading past 1.30.
 - **Restoring a backup** into a new session is manual for now: create the new cluster with `bootstrap.recovery` pointing at the previous session's folder in the backup bucket.
 - **Upgrading images:** change the tag and digest together (`docker buildx imagetools inspect <image>:<tag>` prints the digest), and prefer releases that have been out for at least two weeks.

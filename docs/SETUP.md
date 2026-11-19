@@ -441,6 +441,7 @@ Cents per month: state and backup buckets, Artifact Registry images, Secret Mana
 - Per-agent LiteLLM budgets cap model spend inside the platform ([ADR-0005](adr/0005-llm-gateway-litellm.md)).
 - Destroy the cluster after every session; keep only the persistent layer.
 - Default model aliases to Flash / Flash-Lite; use larger models only where a step needs them.
+- On k3d, both aliases use Flash-Lite by default, and `LOCAL_MODELS=mock` replaces model calls with free canned answers for testing everything except answer quality ([RUNBOOK §1.3](RUNBOOK.md#13-run-the-research-agent)).
 - Delete unused Artifact Registry images (cleanup policy in Terraform).
 - Watch for orphans: external load balancers, persistent disks, static IPs, Cloud NAT.
 - `TODO`: Record actual cost per demo session.

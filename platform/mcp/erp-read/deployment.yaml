@@ -1,0 +1,100 @@
+# erp-read: MCP Toolbox for Databases serving the read-only ERP tools in tools.yaml.
+# Connects to Postgres as erp_reader (SELECT only). Reached by the agent worker on 8080 at /mcp.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-erp-read
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-erp-read
+  labels:
+    app.kubernetes.io/name: mcp-erp-read
+    app.kubernetes.io/component: mcp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-erp-read
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-erp-read
+        app.kubernetes.io/component: mcp-server # network policies: reachable from the worker only
+    spec:
+      serviceAccountName: mcp-erp-read
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532 # "nonroot" in the distroless base image
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: toolbox
+          image: us-central1-docker.pkg.dev/database-toolbox/toolbox/toolbox:1.15.0@sha256:7e4f7bfd93ccec33c066563a4ca700572e4ce95a8d45ba18577df8ee50b9481a
+          args:
+            - --config=/config/tools.yaml
+            - --address=0.0.0.0
+            - --port=8080
+            - --disable-version-check
+            - --disable-reload
+            - --logging-format=JSON
+            # DNS rebinding protection: the Service names, plus localhost for kubectl port-forward.
+            - --allowed-hosts=mcp-erp-read,mcp-erp-read.agents,mcp-erp-read.agents.svc,mcp-erp-read.agents.svc.cluster.local,localhost
+          env:
+            - name: ERP_HOST
+              value: agents-pg-rw
+            - name: ERP_USER
+              valueFrom:
+                secretKeyRef: { name: pg-erp-reader, key: username }
+            - name: ERP_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: pg-erp-reader, key: password }
+          ports:
+            - name: mcp
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: mcp
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: mcp
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: mcp-erp-read-tools
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-erp-read
+  labels:
+    app.kubernetes.io/name: mcp-erp-read
+    app.kubernetes.io/component: mcp-server
+spec:
+  selector:
+    app.kubernetes.io/name: mcp-erp-read
+  ports:
+    - name: mcp
+      port: 8080
+      targetPort: mcp

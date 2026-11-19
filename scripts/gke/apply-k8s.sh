@@ -61,6 +61,7 @@ log "wrote ${OVERLAY#"$REPO_ROOT"/}/cluster.env"
 
 # Build the worker image from this checkout and push it to Artifact Registry (writes images.env).
 "${REPO_ROOT}/scripts/gke/build-push.sh" worker
+"${REPO_ROOT}/scripts/gke/build-push.sh" mcp-docs
 
 if [[ "${1:-}" == "diff" ]]; then
   kubectl diff -k "$OVERLAY" || true
@@ -73,8 +74,11 @@ install_cnpg_operator
 kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 apply_secret iap-oauth-client Opaque "key=${IAP_OAUTH_CLIENT_SECRET}"
 ensure_platform_secrets gsm
+ensure_erp_secrets
 kubectl apply -k "$OVERLAY"
 wait_for_services
+wait_for_mcp
+load_erp
 ensure_litellm_ui_admin
 ensure_litellm_agent_keys
 wait_for_worker

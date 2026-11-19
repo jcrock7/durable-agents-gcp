@@ -74,19 +74,21 @@ Organized by what things belong to: one folder per agent, and the platform by la
 ```text
 .
 ├── agents/                       # By industry, then one self-contained folder per agent (agents/README.md)
-│   ├── general/                  # Industry-neutral: research-summarize, invoice-exception-resolver (designed), audit-evidence-collector
+│   ├── general/                  # Industry-neutral: research-summarize, invoice-exception-resolver (building), audit-evidence-collector
 │   ├── financial-services/       # Example applications of the patterns, with business cases
 │   └── technology/, manufacturing/, healthcare/   # Technology: cve-remediator, finops-cost-sentinel, incident-commander (planned)
 ├── apps/
-│   └── worker/                   # The Temporal worker that runs every agent (+ Dockerfile, k8s)
+│   ├── worker/                   # The Temporal worker that runs every agent (+ Dockerfile, k8s)
+│   └── mcp-docs/                 # Custom MCP server: the synthetic document store (+ Dockerfile)
 ├── packages/
-│   └── agent-kit/                # Shared: LiteLLM clients, retry presets, heartbeats, review gate
+│   └── agent-kit/                # Shared: LiteLLM clients, MCP tools + allow-lists, skills, retry presets, review gate
 ├── platform/                     # Everything deployed to GCP, by layer (platform/README.md)
 │   ├── cost-guardrails/          # Deployed first: budget, alerts, enforcer function, cluster time limit
 │   ├── foundation/terraform/     # Persistent: registry, secrets, service accounts, IAP, CI federation
 │   ├── cluster/terraform/        # Per session: VPC + NAT, GKE Autopilot, gateway IP and certificate
 │   ├── k8s/                      # Kustomize: namespace, policies, Gateway + IAP (base + local/gke overlays)
 │   ├── services/                 # Postgres (CloudNativePG), Temporal, LiteLLM + guardrail
+│   ├── mcp/                      # In-cluster MCP servers: erp-read, erp-write (MCP Toolbox), docs
 │   └── modules/                  # network, gke-autopilot
 ├── scripts/                      # Named for when you run them (see scripts/README.md)
 │   ├── local/                    # Your PC: toolchain once, then k3d up / apply / down
@@ -157,7 +159,7 @@ Details: [SETUP.md §4](docs/SETUP.md#4-security--secrets-hygiene-public-repo-ru
 - [x] Platform services: Postgres (CloudNativePG + pgvector), Temporal, LiteLLM with prompt-injection guardrail (`platform/services`)
 - [x] Prototype agent portfolio and business cases ([ADR-0017](docs/adr/0017-prototype-agent-portfolio.md))
 - [x] Agent portfolio by pattern and tool layer decided ([ADR-0019](docs/adr/0019-pattern-agent-portfolio.md), [ADR-0020](docs/adr/0020-mcp-tools-and-skills.md)); Invoice Exception Resolver designed
-- [ ] Invoice Exception Resolver: MCP tools, synthetic ERP, match engine, workflow, evals (`agents/general/invoice-exception-resolver`)
+- [ ] Invoice Exception Resolver: MCP tools and synthetic ERP done (M1, M2); match engine, workflow, evals next (`agents/general/invoice-exception-resolver`)
 - [x] Shared worker, agent-kit, and the first agent: research and summarize, with human review (`agents/general/research-summarize`)
 - [ ] Application: API + review UI (design: [ADR-0021](docs/adr/0021-agent-portal-ui.md), [`docs/design/agent-portal`](docs/design/agent-portal/))
 - [ ] Evals in CI (promptfoo)

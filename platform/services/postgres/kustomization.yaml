@@ -1,9 +1,10 @@
 # Postgres for the app, agent results, pgvector embeddings and LiteLLM spend logs (ADR-0007).
-# Requires the CloudNativePG operator (./operator) and the Secrets pg-app and pg-litellm,
-# which the apply scripts create.
+# Requires the CloudNativePG operator (./operator) and the Secrets pg-app, pg-litellm,
+# pg-erp-reader and pg-erp-writer, which the apply scripts create.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
   - cluster.yaml
   - database.yaml
+  - database-erp.yaml

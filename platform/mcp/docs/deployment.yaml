@@ -1,0 +1,80 @@
+# docs: read-only MCP server over the synthetic document store (invoice PDFs, vendor emails).
+# Custom TypeScript server (apps/mcp-docs); the store is built into the image, so there is no
+# volume and no credential. Reached by the agent worker on 8080 at /mcp.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-docs
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-docs
+  labels:
+    app.kubernetes.io/name: mcp-docs
+    app.kubernetes.io/component: mcp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-docs
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-docs
+        app.kubernetes.io/component: mcp-server # network policies: reachable from the worker only
+    spec:
+      serviceAccountName: mcp-docs
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000 # "node" in the base image
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: docs
+          image: MCP_DOCS_IMAGE # replaced per environment from images.env (see the overlays)
+          env:
+            - name: ALLOWED_HOSTS
+              value: mcp-docs,mcp-docs.agents,mcp-docs.agents.svc,mcp-docs.agents.svc.cluster.local,localhost
+          ports:
+            - name: mcp
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: mcp
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: mcp
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-docs
+  labels:
+    app.kubernetes.io/name: mcp-docs
+    app.kubernetes.io/component: mcp-server
+spec:
+  selector:
+    app.kubernetes.io/name: mcp-docs
+  ports:
+    - name: mcp
+      port: 8080
+      targetPort: mcp

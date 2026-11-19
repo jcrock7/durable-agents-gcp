@@ -1,0 +1,99 @@
+# erp-write: the only tools that change the ERP (MCP Toolbox for Databases, flat config format).
+# Connects as Postgres role erp_writer: INSERT on resolutions and outbox, UPDATE of invoice and
+# exception status only. Workflow-only: the agent's allow-list never offers these to the model
+# (ADR-0020), and the workflow calls them only after approval where its rules require it.
+kind: source
+name: erp
+type: postgres
+host: ${ERP_HOST}
+port: 5432
+database: erp
+user: ${ERP_USER}
+password: ${ERP_PASSWORD}
+---
+kind: tool
+name: post_resolution
+type: postgres-sql
+source: erp
+description: Record the resolution of an exception, set the invoice status (resolved or on_hold) and close the exception. Returns the new resolution id.
+parameters:
+  - name: invoice_id
+    type: string
+    description: ERP invoice id.
+  - name: exception_id
+    type: string
+    description: Exception id, for example EX-3000.
+  - name: action
+    type: string
+    description: The resolution action, for example accept_variance or request_credit_memo.
+  - name: amount_cents
+    type: integer
+    description: Money change in cents from the match engine; 0 if none.
+  - name: note
+    type: string
+    description: Summary of the resolution with its evidence references.
+  - name: approved_by
+    type: string
+    description: Who approved it, or an empty string if no approval was required.
+  - name: run_id
+    type: string
+    description: The Temporal workflow id of the run.
+  - name: invoice_status
+    type: string
+    description: New invoice status, resolved or on_hold.
+statement: |
+  WITH res AS (
+    INSERT INTO erp.resolutions (invoice_id, exception_id, action, amount_cents, note, approved_by, run_id)
+    VALUES ($1::text, $2::text, $3::text, $4::bigint, $5::text, NULLIF($6::text, ''), $7::text)
+    RETURNING id
+  ), inv AS (
+    UPDATE erp.invoices
+       SET status = CASE WHEN $8::text IN ('resolved', 'on_hold') THEN $8::text END
+     WHERE id = $1::text
+    RETURNING id
+  ), ex AS (
+    UPDATE erp.exceptions SET status = 'resolved' WHERE id = $2::text AND invoice_id = $1::text RETURNING id
+  )
+  SELECT (SELECT id FROM res) AS resolution_id,
+         (SELECT count(*) FROM inv) AS invoices_updated,
+         (SELECT count(*) FROM ex) AS exceptions_closed;
+---
+kind: tool
+name: queue_message
+type: postgres-sql
+source: erp
+description: Queue an outbound message (to a vendor, a buyer or receiving) in the outbox. Returns the outbox id.
+parameters:
+  - name: to_address
+    type: string
+    description: Recipient email address.
+  - name: subject
+    type: string
+    description: Subject line.
+  - name: body
+    type: string
+    description: Message body.
+  - name: invoice_id
+    type: string
+    description: ERP invoice id the message is about.
+  - name: run_id
+    type: string
+    description: The Temporal workflow id of the run.
+statement: |
+  INSERT INTO erp.outbox (to_address, subject, body, invoice_id, run_id)
+  VALUES ($1::text, $2::text, $3::text, $4::text, $5::text)
+  RETURNING id;
+---
+kind: tool
+name: set_invoice_hold
+type: postgres-sql
+source: erp
+description: Put an invoice that is in exception on hold, so it is not paid while the case waits. Returns the invoice id and status, or no row if the invoice was not in exception.
+parameters:
+  - name: invoice_id
+    type: string
+    description: ERP invoice id.
+statement: |
+  UPDATE erp.invoices SET status = 'on_hold'
+   WHERE id = $1::text AND status = 'exception'
+  RETURNING id, status;

@@ -76,3 +76,6 @@ tmp/
 platform/k8s/overlays/gke/cluster.env
 platform/k8s/overlays/local/local.env
 platform/k8s/overlays/*/images.env
+
+# ---------- Generated synthetic data ----------
+agents/general/invoice-exception-resolver/data/out/

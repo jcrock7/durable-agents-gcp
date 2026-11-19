@@ -1,0 +1,12 @@
+# The synthetic ERP behind the Invoice Exception Resolver's MCP servers (platform/mcp).
+# Schema, grants and data come from the agent's seeded generator, loaded by the apply scripts
+# (scripts/local/erp-load.sh reloads it).
+apiVersion: postgresql.cnpg.io/v1
+kind: Database
+metadata:
+  name: erp
+spec:
+  name: erp
+  owner: erp_owner
+  cluster:
+    name: agents-pg

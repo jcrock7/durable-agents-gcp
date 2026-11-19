@@ -1,0 +1,28 @@
+{
+  "name": "@agents/invoice-exception-resolver",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Works the invoices a three-way match rejects: gathers evidence through MCP tools, proposes a cited resolution, and waits for approval before anything changes what gets paid",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./data": {
+      "types": "./dist/data/index.d.ts",
+      "default": "./dist/data/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "generate": "node dist/data/cli.js",
+    "verify-mcp": "node dist/verify-mcp.js"
+  },
+  "dependencies": {
+    "@agents/agent-kit": "workspace:*",
+    "@temporalio/common": "1.25.0"
+  }
+}

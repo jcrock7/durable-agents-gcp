@@ -1,0 +1,21 @@
+# MCP servers take traffic only from the agent worker, on their MCP port (ADR-0020). The
+# namespace's default-deny-ingress (platform/k8s/base) blocks everything else. kubectl
+# port-forward, used by scripts/local/mcp-verify.sh, enters through the pod's own network
+# namespace and is not affected.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-from-worker
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: mcp-server
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: worker
+      ports:
+        - port: 8080
+          protocol: TCP

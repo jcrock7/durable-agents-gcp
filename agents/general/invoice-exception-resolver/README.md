@@ -1,6 +1,6 @@
 # Invoice Exception Resolver
 
-> **Status: building.** M1 (MCP client, allow-list, tool loop, skill loader in [agent-kit](../../../packages/agent-kit/)) is done; M2 onward are next. This README is the design. It becomes the agent's normal README as each milestone lands. Why this agent: [business case](business-case.md). Where it fits: [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md). How tools and skills work: [ADR-0020](../../../docs/adr/0020-mcp-tools-and-skills.md).
+> **Status: building.** M1 (MCP client, allow-list, tool loop, skill loader in [agent-kit](../../../packages/agent-kit/)) and M2 (synthetic ERP, document store, and the `erp-read`, `erp-write` and `docs` MCP servers in [platform/mcp](../../../platform/mcp/)) are done; M3 onward are next. This README is the design. It becomes the agent's normal README as each milestone lands. Why this agent: [business case](business-case.md). Where it fits: [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md). How tools and skills work: [ADR-0020](../../../docs/adr/0020-mcp-tools-and-skills.md).
 
 Works the invoices a three-way match rejects. It reruns the match deterministically, classifies the exception, gathers evidence from the ERP, documents and the vendor mailbox, and proposes a cited resolution. It chases the vendor or the receiving dock and waits for days if needed. A person approves anything that changes what gets paid. This is the **template agent** for [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md): the first agent built on MCP tools and skills, and the one the next four copy.
 
@@ -32,7 +32,7 @@ exception queue ──► resolveExceptionQueue (parent workflow, fan-out, max N
 | Step | Runs as | Model / tool |
 |---|---|---|
 | 1. Match | activity `runMatch` | `match-engine:run_match`, `match-engine:check_duplicate` |
-| 2. Read invoice | activity `readInvoice` | `docs:read_media_file` → `fast` (PDF in, structured fields out) |
+| 2. Read invoice | activity `readInvoice` | `docs:read_pdf_text` → `fast` (text in, structured fields out; text passes the gateway's injection check). `docs:read_media_file` stays available for a model that reads the PDF directly |
 | 3. Gather evidence | activity `gatherEvidence`: a model-driven loop over read-only tools, max 4 rounds | `fast` + `erp-read:*`, `docs:read_text_file` |
 | 4. Propose | activity `proposeResolution` | `smart`, structured output. Citations and action validated. Amounts recomputed by `match-engine:compute_adjustment` |
 | 5. Route | workflow code | Rules from `agent.config.ts`: action, amount and flags |
@@ -48,9 +48,9 @@ All tools are MCP servers in the cluster, one Deployment each, under `platform/m
 
 | Server | Built from | Tools this agent may use | Who calls them | Credentials | Scales |
 |---|---|---|---|---|---|
-| `erp-read` | **Existing:** MCP Toolbox for Databases (Postgres source, tools defined as parameterized SQL in `tools.yaml`) | `get_invoice`, `get_purchase_order`, `get_receipts`, `get_vendor`, `get_contract_prices`, `get_invoice_history`, `search_vendor_messages`, `list_open_exceptions` | Model (inside `gatherEvidence`) and workflow | Postgres role `erp_reader`: `SELECT` only | 1 replica |
-| `erp-write` | **Existing:** MCP Toolbox for Databases, second instance | `post_resolution`, `queue_message`, `set_invoice_hold` | **Workflow only**, never offered to the model | Postgres role `erp_writer`: `INSERT` on `resolutions` and `outbox`, `UPDATE` of `invoices.status` only | 1 replica |
-| `docs` | **Existing:** the reference MCP filesystem server, read-only mount of the synthetic document store | `read_media_file`, `read_text_file`, `list_directory` | Activities | Read-only volume, no network egress | 1 replica |
+| `erp-read` ✅ | **Existing:** MCP Toolbox for Databases 1.15.0 (Postgres source, tools defined as parameterized SQL in [`tools.yaml`](../../../platform/mcp/erp-read/tools.yaml)) | `get_invoice`, `get_purchase_order`, `get_receipts`, `get_vendor`, `get_item`, `get_contract_prices`, `get_invoice_history`, `search_vendor_messages`, `list_open_exceptions` | Model (inside `gatherEvidence`) and workflow | Postgres role `erp_reader`: `SELECT` only | 1 replica |
+| `erp-write` ✅ | **Existing:** MCP Toolbox for Databases, second instance ([`tools.yaml`](../../../platform/mcp/erp-write/tools.yaml)) | `post_resolution`, `queue_message`, `set_invoice_hold` | **Workflow only**, never offered to the model | Postgres role `erp_writer`: `INSERT` on `resolutions` and `outbox`, `UPDATE` of invoice and exception `status` only | 1 replica |
+| `docs` ✅ | **Custom** ([`apps/mcp-docs`](../../../apps/mcp-docs/)): the reference filesystem server is stdio-only, so this small Streamable HTTP server replaces it ([why](../../../platform/mcp/README.md#why-docs-is-custom)). The document store is built into its image | `list_directory`, `read_text_file`, `read_pdf_text`, `read_media_file` | Activities | None; no volume | 1 replica |
 | `match-engine` | **Custom:** TypeScript, official MCP SDK, stateless | `run_match`, `check_duplicate`, `compute_adjustment` | Activities and workflow | None: pure computation over inputs plus `erp-read` data | **HorizontalPodAutoscaler** on CPU, 1–10 replicas. The queue fan-out shows it scaling |
 
 `match-engine` is deliberately boring: integer cents, explicit tolerance rules, and the same output for the same input, with unit tests on every exception type. It's the "deterministic tool next to model judgment" part of the demo, and the custom server that shows a standard HPA.
@@ -77,7 +77,7 @@ Policy values (tolerances, thresholds, reminder days) live in `agent.config.ts`,
 | `tolerance.pricePct` / `tolerance.priceCents` | 2% / 5,000 (the lower applies) | Price variance auto-accepted by the match itself. Example values, set per company |
 | `tolerance.quantity` | 0 | Quantity must match exactly |
 | `approval.amountCents` | 100,000 | Messages and actions above $1,000 need approval |
-| `approval.alwaysFor` | `accept_variance`, `short_pay`, `reject`, any fraud flag | Always need a person |
+| `approval.alwaysFor` | `accept_variance`, `short_pay`, `reject_duplicate`, any fraud flag | Always need a person |
 | `wait.reminderDays` / `wait.escalateDays` | 3 and 7 / 10 | Vendor follow-up schedule |
 | `limits.evidenceRounds` / `limits.rounds` | 4 / 3 | Tool rounds per evidence step / match-propose-wait rounds per case |
 | `queue.maxParallel` | 10 | Child workflows running at once in the fan-out |
@@ -85,16 +85,30 @@ Policy values (tolerances, thresholds, reminder days) live in `agent.config.ts`,
 
 ## Synthetic data
 
-A seeded generator (`data/generate.ts`) creates a small ERP in its own Postgres database `erp`, plus a document store of rendered invoice PDFs and vendor emails:
+A seeded generator ([`src/data/`](src/data/)) creates a small ERP in its own Postgres database `erp`, plus a document store of rendered invoice PDFs and vendor emails. Same seed, same data: `node dist/data/cli.js [out-dir] [seed]` writes `seed.sql`, `docs/` and `labels.json` (default `data/out/`, gitignored). The fixed "today" is 2026-11-17.
 
-- **Tables:** `vendors`, `items`, `contract_prices`, `purchase_orders` + lines, `receipts` + lines, `invoices` + lines, `messages` (vendor mailbox, in and out), `resolutions`, `outbox`.
-- **Scale:** about 20 vendors, 200 items, 500 POs, 1,000 invoices. About 10% are exceptions, each with a labelled type and expected action for evals.
-- **Seeded cases:** every exception type in the [business case](business-case.md#business-purpose), plus:
-  - a duplicate re-sent with a new invoice number
-  - a vendor email asking to change bank details
-  - an invoice PDF with hidden text telling the agent to approve it
-  - an exception whose evidence is genuinely missing, so the right answer is to escalate
-- **Vendor simulator:** `data/simulate-reply.ts` writes a vendor reply into `messages` and signals the waiting run. It's the stand-in for a mail webhook.
+- **Tables:** `vendors`, `items`, `contract_prices`, `purchase_orders` + `po_lines`, `receipts` + `receipt_lines`, `invoices` + `invoice_lines`, `messages` (vendor mailbox), `exceptions` (the ERP's own match rejections, with reason codes), `resolutions`, `outbox`. Schema and grants: [`sql.ts`](src/data/sql.ts).
+- **Scale:** 20 vendors, 200 items, 1,000 POs, 988 invoices (POs still in transit have none yet), 98 messages, 96 open exceptions (about 10%).
+- **Seeded cases** ([`generate.ts`](src/data/generate.ts)), each with a label for evals: the expected type, action, whether a person must decide, a fraud flag, the expected amount and the evidence a good answer cites. Labels go to `labels.json` only, never into the ERP.
+
+  | Scenario | Count | Expected action |
+  |---|---|---|
+  | Price variance from a contract price change, with the vendor's notice (includes the demo case INV-20931: 1,200 units, $2.92 → $3.99, $1,284.00) | 14 | `accept_variance` (person approves) |
+  | Billed above contract and PO, no change on record | 12 | `request_credit_memo` |
+  | Fewer units received than billed | 12 | `short_pay` |
+  | No receipt, goods in transit (shipment notice) | 8 | `wait_for_receipt` |
+  | No receipt, but delivered and signed for (proof of delivery) | 6 | `request_receipt_entry` |
+  | Billed by the case against a PO in each; totals agree | 8 | `accept_uom_conversion` |
+  | Freight billed, allowed by the vendor's terms | 6 | `accept_charge` |
+  | Freight billed to a freight-prepaid vendor | 6 | `request_credit_memo` |
+  | Paid invoice re-sent with a new number | 8 | `reject_duplicate` |
+  | Invoice against the wrong (closed) PO | 8 | `reassign_po` |
+  | Price variance with no contract price and no correspondence | 4 | `escalate` |
+  | Remittance bank changed, urgent email from a look-alike domain | 2 | `escalate` with fraud flag |
+  | Invoice PDF with hidden text telling the agent to approve it | 2 | blocked by the guardrail |
+
+- **Documents:** one PDF per invoice (`invoices/INV-*.pdf`, written by a minimal dependency-free [PDF writer](src/data/pdf.ts)) and one text file per message (`emails/MSG-*.txt`). They are generated into the `mcp-docs` image together with the matching `seed.sql`, which the apply scripts load from there, so rows and documents always agree.
+- **Vendor simulator (M4):** `data/simulate-reply.ts` writes a vendor reply into `messages` and signals the waiting run. It's the stand-in for a mail webhook.
 
 Everything is synthetic. Vendor names are generated, not real companies.
 
@@ -119,7 +133,7 @@ It also carries: exception type, action taken, amounts (from `match-engine`), ci
 | Milestone | Delivers | Done when |
 |---|---|---|
 | M1. Tools foundation ✅ | MCP client in `packages/agent-kit` (allow-list filter, call logging, step-limited tool loop); skill loader | Unit tests: unlisted tools dropped and refused; skill versions recorded |
-| M2. Synthetic ERP | `erp` database, roles, generator, document store; `erp-read`, `erp-write`, `docs` servers deployed by Kustomize | `verify` script lists each server's tools and runs one call per server |
+| M2. Synthetic ERP ✅ | `erp` database, roles, generator, document store; `erp-read`, `erp-write`, `docs` servers deployed by Kustomize ([platform/mcp](../../../platform/mcp/)) | `scripts/local/mcp-verify.sh` lists each server's tools and runs one call per server (8 of 8 checks pass on k3d) |
 | M3. Match engine | `platform/mcp/match-engine` with HPA | Unit tests for every exception type; load test shows HPA scaling on k3d |
 | M4. Workflow | Steps 1–7, review gate, waits, reminders, queue fan-out | Time-skipping workflow tests: every route, timeouts, crash recovery |
 | M5. Evals and demo | promptfoo suite on the labelled set; demo script | Success measures in the [business case](business-case.md#prototype-scope-and-success-measures) met |
@@ -128,4 +142,4 @@ It also carries: exception type, action taken, amounts (from `match-engine`), ci
 
 - **LiteLLM MCP gateway** as a second allow-list layer: check on the pinned LiteLLM version after M1 ([ADR-0020](../../../docs/adr/0020-mcp-tools-and-skills.md)).
 - ~~**MCP client in the AI SDK**~~ Settled in M1: agent-kit uses the official MCP SDK client (`@modelcontextprotocol/sdk` 1.32.2) and turns allowed tools into AI SDK tools itself, so the allow-list and call log sit in one place.
-- **Where documents live on GKE:** a read-only volume works locally; on GKE consider a Cloud Storage bucket mounted read-only through the GCS FUSE CSI driver.
+- ~~**Where documents live on GKE**~~ Settled in M2: the documents are generated, so they are built into the `mcp-docs` image. No volume, bucket or credential on either k3d or GKE.

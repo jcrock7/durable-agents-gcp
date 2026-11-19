@@ -2,7 +2,8 @@
 # architecture. Outbound traffic (DNS, Google APIs, image pulls) stays open.
 #
 # Label conventions every workload must follow:
-#   app.kubernetes.io/name: api | worker | litellm | temporal
+#   app.kubernetes.io/name: api | worker | litellm | temporal | mcp-<server>
+#   app.kubernetes.io/component: mcp-server   (every MCP server; see platform/mcp)
 #   cnpg.io/cluster: agents-pg            (set by CloudNativePG on Postgres pods)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -89,7 +90,7 @@ spec:
             matchExpressions:
               - key: app.kubernetes.io/name
                 operator: In
-                values: [api, worker, litellm]
+                values: [api, worker, litellm, mcp-erp-read, mcp-erp-write]
       ports:
         - port: 5432
           protocol: TCP

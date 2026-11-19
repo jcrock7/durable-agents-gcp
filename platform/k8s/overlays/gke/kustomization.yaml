@@ -15,6 +15,7 @@ resources:
   - ../../../services/temporal
   - ../../../services/litellm
   - ../../../../apps/worker/k8s
+  - ../../../mcp
   - gateway.yaml
   - routes.yaml
   - policies.yaml
@@ -52,6 +53,10 @@ configMapGenerator:
       - VERTEX_PROJECT=PROJECT_ID
 
 replacements:
+  - source: { kind: ConfigMap, name: image-settings, fieldPath: data.MCP_DOCS_IMAGE }
+    targets:
+      - select: { kind: Deployment, name: mcp-docs }
+        fieldPaths: ["spec.template.spec.containers.[name=docs].image"]
   - source: { kind: ConfigMap, name: image-settings, fieldPath: data.WORKER_IMAGE }
     targets:
       - select: { kind: Deployment, name: worker }

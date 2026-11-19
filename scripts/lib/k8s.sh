@@ -214,9 +214,9 @@ load_erp() {
 # Wait for the MCP servers.
 wait_for_mcp() {
   local d
-  for d in mcp-erp-read mcp-erp-write mcp-docs; do
+  for d in mcp-erp-read mcp-erp-write mcp-docs mcp-match-engine; do
     kubectl -n "$NS" rollout status "deployment/$d" --timeout=3m >/dev/null \
       || warn "$d not ready yet: kubectl -n $NS logs deploy/$d"
   done
-  log "MCP servers ready: mcp-erp-read, mcp-erp-write, mcp-docs (check: scripts/local/mcp-verify.sh)"
+  log "MCP servers ready: mcp-erp-read, mcp-erp-write, mcp-docs, mcp-match-engine (check: scripts/local/mcp-verify.sh)"
 }

@@ -47,6 +47,25 @@ statement: |
    WHERE p.id = $1;
 ---
 kind: tool
+name: list_vendor_purchase_orders
+type: postgres-sql
+source: erp
+description: The vendor's open purchase orders with their lines, newest first, at most 50. Use it to find the right PO when an invoice references the wrong one.
+parameters:
+  - name: vendor_id
+    type: string
+    description: Vendor id.
+statement: |
+  SELECT p.id, p.vendor_id, p.buyer_email, p.issued_on, p.status,
+         (SELECT json_agg(json_build_object('line_no', l.line_no, 'item_id', l.item_id, 'quantity', l.quantity,
+                 'unit_price_cents', l.unit_price_cents) ORDER BY l.line_no)
+            FROM erp.po_lines l WHERE l.po_id = p.id) AS lines
+    FROM erp.purchase_orders p
+   WHERE p.vendor_id = $1 AND p.status = 'open'
+   ORDER BY p.issued_on DESC, p.id DESC
+   LIMIT 50;
+---
+kind: tool
 name: get_receipts
 type: postgres-sql
 source: erp
@@ -120,13 +139,13 @@ parameters:
     description: Vendor id.
   - name: limit
     type: integer
-    description: How many invoices to return, at most 50.
+    description: How many invoices to return, at most 200.
 statement: |
   SELECT id, vendor_invoice_number, po_id, invoice_date, total_cents, status
     FROM erp.invoices
    WHERE vendor_id = $1
    ORDER BY invoice_date DESC, id DESC
-   LIMIT LEAST($2::int, 50);
+   LIMIT LEAST($2::int, 200);
 ---
 kind: tool
 name: search_vendor_messages

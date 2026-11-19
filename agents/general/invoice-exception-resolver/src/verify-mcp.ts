@@ -66,6 +66,17 @@ check("erp-write: refused to the model", async () => {
   throw new Error("the model was allowed to call erp-write:post_resolution");
 });
 
+check("match-engine: run_match and compute_adjustment on INV-20931", async () => {
+  const match = await toolbox.call("match-engine:run_match", { invoice_id: "INV-20931" }, "workflow");
+  if (match.isError) throw new Error(resultText(match, 500));
+  const result = JSON.parse(resultText(match, 100_000)) as { status: string; exceptionTypes: string[] };
+  if (result.status !== "exception" || !result.exceptionTypes.includes("price_variance")) throw new Error(`unexpected match: ${resultText(match, 300)}`);
+  const adj = await toolbox.call("match-engine:compute_adjustment", { invoice_id: "INV-20931", action: "accept_variance" }, "workflow");
+  const { amountCents } = JSON.parse(resultText(adj, 10_000)) as { amountCents: number };
+  if (amountCents !== 128_400) throw new Error(`expected a $1,284.00 variance, got ${amountCents} cents`);
+  return `exception (${result.exceptionTypes.join(", ")}); accept_variance amount ${amountCents} cents`;
+});
+
 check("docs: read_pdf_text invoices/INV-20931.pdf", async () => {
   const result = await toolbox.call("docs:read_pdf_text", { path: "invoices/INV-20931.pdf" }, "activity");
   if (result.isError) throw new Error(resultText(result, 500));

@@ -18,6 +18,7 @@ export const agentConfig = {
     allow: [
       "erp-read:get_invoice",
       "erp-read:get_purchase_order",
+      "erp-read:list_vendor_purchase_orders",
       "erp-read:get_receipts",
       "erp-read:get_vendor",
       "erp-read:get_item",
@@ -32,6 +33,9 @@ export const agentConfig = {
       "docs:read_text_file",
       "docs:read_pdf_text",
       "docs:read_media_file",
+      "match-engine:run_match",
+      "match-engine:check_duplicate",
+      "match-engine:compute_adjustment",
     ],
     workflowOnly: ["erp-write:post_resolution", "erp-write:queue_message", "erp-write:set_invoice_hold"],
   },

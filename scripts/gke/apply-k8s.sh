@@ -62,6 +62,7 @@ log "wrote ${OVERLAY#"$REPO_ROOT"/}/cluster.env"
 # Build the worker image from this checkout and push it to Artifact Registry (writes images.env).
 "${REPO_ROOT}/scripts/gke/build-push.sh" worker
 "${REPO_ROOT}/scripts/gke/build-push.sh" mcp-docs
+"${REPO_ROOT}/scripts/gke/build-push.sh" mcp-match-engine
 
 if [[ "${1:-}" == "diff" ]]; then
   kubectl diff -k "$OVERLAY" || true

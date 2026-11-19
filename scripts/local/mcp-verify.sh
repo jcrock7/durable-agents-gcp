@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Check the MCP servers in the cluster end to end through the agent's own allow-listed client:
-# port-forward erp-read, erp-write and docs, then run the agent's verify script (lists each
+# port-forward erp-read, erp-write, docs and match-engine, then run the agent's verify script (lists each
 # server's tools, makes one read call per server, and checks that write tools stay hidden from
 # the model). Changes no data.
 #
@@ -26,8 +26,9 @@ forward() { # forward <service> <local-port>
 forward mcp-erp-read 18081
 forward mcp-erp-write 18082
 forward mcp-docs 18083
+forward mcp-match-engine 18084
 
-for port in 18081 18082 18083; do
+for port in 18081 18082 18083 18084; do
   for _ in $(seq 1 30); do
     (exec 3<>"/dev/tcp/127.0.0.1/${port}") 2>/dev/null && break
     sleep 0.5
@@ -37,4 +38,5 @@ done
 MCP_ERP_READ_URL=http://localhost:18081/mcp \
 MCP_ERP_WRITE_URL=http://localhost:18082/mcp \
 MCP_DOCS_URL=http://localhost:18083/mcp \
+MCP_MATCH_ENGINE_URL=http://localhost:18084/mcp \
   node "${AGENT}/dist/verify-mcp.js"

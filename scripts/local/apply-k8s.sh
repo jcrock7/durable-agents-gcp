@@ -38,6 +38,7 @@ log "models (LOCAL_MODELS=${LOCAL_MODELS}): fast=${fast}, smart=${smart}"
 # Build the worker image from this checkout and push it to the k3d registry (writes images.env).
 "${REPO_ROOT}/scripts/local/build-push.sh" worker
 "${REPO_ROOT}/scripts/local/build-push.sh" mcp-docs
+"${REPO_ROOT}/scripts/local/build-push.sh" mcp-match-engine
 
 if [[ "${1:-}" == "diff" ]]; then
   kubectl diff -k "$OVERLAY" || true

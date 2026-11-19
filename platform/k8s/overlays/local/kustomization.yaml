@@ -40,6 +40,10 @@ replacements:
     targets:
       - select: { kind: Deployment, name: mcp-docs }
         fieldPaths: ["spec.template.spec.containers.[name=docs].image"]
+  - source: { kind: ConfigMap, name: image-settings, fieldPath: data.MCP_MATCH_ENGINE_IMAGE }
+    targets:
+      - select: { kind: Deployment, name: mcp-match-engine }
+        fieldPaths: ["spec.template.spec.containers.[name=match-engine].image"]
   - source: { kind: ConfigMap, name: image-settings, fieldPath: data.WORKER_IMAGE }
     targets:
       - select: { kind: Deployment, name: worker }

@@ -19,3 +19,41 @@ spec:
       ports:
         - port: 8080
           protocol: TCP
+---
+# match-engine reads ERP data through erp-read (it holds no database credentials).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: erp-read-from-match-engine
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-erp-read
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mcp-match-engine
+      ports:
+        - port: 8080
+          protocol: TCP
+---
+# The on-demand HPA load test (match-engine/load-test-job.yaml) may reach match-engine only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: match-engine-from-load-test
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-match-engine
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mcp-load-test
+      ports:
+        - port: 8080
+          protocol: TCP

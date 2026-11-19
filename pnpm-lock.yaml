@@ -228,6 +228,22 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
 
+  apps/mcp-match-engine:
+    dependencies:
+      '@agents/agent-kit':
+        specifier: workspace:*
+        version: link:../../packages/agent-kit
+      '@modelcontextprotocol/sdk':
+        specifier: 1.32.2
+        version: 1.32.2(supports-color@8.1.1)(zod@4.6.7)
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@agents/invoice-exception-resolver':
+        specifier: workspace:*
+        version: link:../../agents/general/invoice-exception-resolver
+
   apps/worker:
     dependencies:
       '@agents/agent-kit':

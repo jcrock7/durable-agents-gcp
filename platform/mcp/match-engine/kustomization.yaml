@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# load-test-job.yaml is not listed: scripts/local/match-engine-load.sh applies it on demand.
+resources:
+  - deployment.yaml

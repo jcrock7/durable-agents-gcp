@@ -1,0 +1,46 @@
+# Load test for the HPA demo: run_match on random seeded invoices from 24 concurrent MCP sessions
+# for 3 minutes. Started (and its image filled in) by scripts/local/match-engine-load.sh; not part
+# of the kustomization. Pods carry app.kubernetes.io/name: mcp-load-test, which the network policy
+# lets reach match-engine, and nothing else.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: match-engine-load-test
+  labels:
+    app.kubernetes.io/name: mcp-load-test
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-load-test
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: load
+          image: MCP_MATCH_ENGINE_IMAGE
+          command: ["node", "dist/load-test.js"]
+          env:
+            - name: CONCURRENCY
+              value: "24"
+            - name: DURATION_SECONDS
+              value: "180"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]

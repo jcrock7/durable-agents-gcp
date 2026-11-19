@@ -1,7 +1,7 @@
 # Business case: AML Alert Investigator
 
 - **Category:** Business problem (financial crime compliance)
-- **Status:** Prototype planned, first to build ([ADR-0017](../../../docs/adr/0017-prototype-agent-portfolio.md))
+- **Status:** Example application of evidence screening at scale (pattern 3); not scheduled to build ([ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md))
 - **Users:** Anti-money-laundering (AML) investigators and their reviewers
 
 ## Summary
@@ -36,19 +36,7 @@ Transaction-monitoring systems flag activity that might be money laundering. The
 | Investigator time moves to the high-risk cases | Time spent on alerts later escalated vs. closed |
 | Better feedback for tuning monitoring rules | Reasons for false positives captured in structured form |
 
-**Illustrative value model** (assumptions to replace with real volumes):
-
-| Assumption | Example value |
-|---|---|
-| Alerts per month | 5,000 |
-| Investigator time per alert today | 45 minutes |
-| Share of that time spent gathering evidence and writing | 60% |
-| Time on those tasks removed by the agent | 70% |
-| Loaded cost per investigator hour | $75 |
-| **Investigator hours saved per month** | 5,000 × 45 min × 60% × 70% ≈ **1,575 hours** |
-| **Labor value per month** | 1,575 × $75 ≈ **$118,000** |
-
-Labor savings understate the value. The bigger exposure is regulatory: late filings and weak documentation lead to findings, remediation programs and penalties. Consistent, cited narratives reduce that exposure, though no prototype can put a number on it.
+No value model: the volumes, handling times and labor rates behind one are domain figures this project can't validate. A pilot would measure the benefits above against the operating unit's own baseline.
 
 ## Cost
 

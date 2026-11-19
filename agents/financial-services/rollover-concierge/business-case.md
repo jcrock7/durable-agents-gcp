@@ -1,7 +1,7 @@
 # Business case: Rollover Concierge
 
 - **Category:** Business problem (retirement services)
-- **Status:** Prototype planned ([ADR-0017](../../../docs/adr/0017-prototype-agent-portfolio.md))
+- **Status:** Example application of exception resolution (pattern 1), over a multi-week process; not scheduled to build ([ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md))
 - **Users:** Retirement service representatives; customers indirectly, through approved outreach
 
 ## Summary
@@ -37,20 +37,7 @@ When people change jobs, they often want to move their old employer's 401(k) int
 | Representatives handle more cases | Active rollovers per representative |
 | Better customer experience | Satisfaction scores; "where is my rollover?" contacts |
 
-**Illustrative value model** (assumptions to replace with real volumes):
-
-| Assumption | Example value |
-|---|---|
-| Rollovers started per month | 1,000 |
-| Average rollover amount | $80,000 |
-| Completion rate today | 70% |
-| Completion-rate improvement from active tracking | +5 percentage points |
-| **Additional assets retained per month** | 1,000 × 5% × $80,000 = **$4 million** |
-| Representative time per rollover today | 90 minutes over the life of the case |
-| Time removed by the agent | 40% |
-| **Representative hours saved per month** | 1,000 × 90 min × 40% = **600 hours** |
-
-The value of retained assets depends on the revenue each dollar of assets earns, which varies by product. Even at a modest annual rate, the asset figure outweighs the labor savings.
+No value model: the volumes, handling times and labor rates behind one are domain figures this project can't validate. A pilot would measure the benefits above against the operating unit's own baseline.
 
 ## Cost
 

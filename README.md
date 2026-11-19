@@ -46,8 +46,10 @@ Only the Gateway is public. Stateless pods (API, worker, LiteLLM) run on Spot ca
 | Compute | GKE Autopilot, Spot for stateless pods | [0014](docs/adr/0014-gke-autopilot-spot.md) |
 | Cost guardrails | Budget alerts, automatic cluster shutdown, billing hard cap | [0015](docs/adr/0015-cost-guardrails.md) |
 | Deployment | Apply scripts now, keyless GitHub Actions deploy next; GitOps controller deferred | [0018](docs/adr/0018-deployment-gitops-deferred.md) |
+| Tools and skills | Tools as in-cluster MCP servers with per-agent allow-lists; skills as versioned instruction packages | [0020](docs/adr/0020-mcp-tools-and-skills.md) |
+| Agent portfolio | Five agents, one per reusable pattern, built on work we can back up | [0019](docs/adr/0019-pattern-agent-portfolio.md) |
 
-All 18 decision records, including superseded ones, are in [`docs/adr/`](docs/adr/).
+All 20 decision records, including superseded ones, are in [`docs/adr/`](docs/adr/).
 
 ## Cost
 
@@ -71,9 +73,9 @@ Organized by what things belong to: one folder per agent, and the platform by la
 ```text
 .
 ├── agents/                       # By industry, then one self-contained folder per agent (agents/README.md)
-│   ├── general/                  # Industry-neutral: research-summarize (Wikipedia → cited summary → review)
-│   ├── financial-services/       # Five planned agents with business cases (ADR-0017)
-│   └── manufacturing/, healthcare/, technology/   # Industries with agents to come
+│   ├── general/                  # Industry-neutral: research-summarize, invoice-exception-resolver (designed), audit-evidence-collector
+│   ├── financial-services/       # Example applications of the patterns, with business cases
+│   └── technology/, manufacturing/, healthcare/   # Technology: cve-remediator, finops-cost-sentinel, incident-commander (planned)
 ├── apps/
 │   └── worker/                   # The Temporal worker that runs every agent (+ Dockerfile, k8s)
 ├── packages/
@@ -153,6 +155,8 @@ Details: [SETUP.md §4](docs/SETUP.md#4-security--secrets-hygiene-public-repo-ru
 - [x] Kubernetes platform layer: namespace, service accounts, quota, network policies, Gateway + HTTPS + IAP (`platform/k8s`)
 - [x] Platform services: Postgres (CloudNativePG + pgvector), Temporal, LiteLLM with prompt-injection guardrail (`platform/services`)
 - [x] Prototype agent portfolio and business cases ([ADR-0017](docs/adr/0017-prototype-agent-portfolio.md))
+- [x] Agent portfolio by pattern and tool layer decided ([ADR-0019](docs/adr/0019-pattern-agent-portfolio.md), [ADR-0020](docs/adr/0020-mcp-tools-and-skills.md)); Invoice Exception Resolver designed
+- [ ] Invoice Exception Resolver: MCP tools, synthetic ERP, match engine, workflow, evals (`agents/general/invoice-exception-resolver`)
 - [x] Shared worker, agent-kit, and the first agent: research and summarize, with human review (`agents/general/research-summarize`)
 - [ ] Application: API + review UI
 - [ ] Evals in CI (promptfoo)

@@ -1,7 +1,7 @@
 # Business case: Agent Fleet Ops
 
 - **Category:** Platform management
-- **Status:** Prototype planned, last to build ([ADR-0017](../../../docs/adr/0017-prototype-agent-portfolio.md))
+- **Status:** Example application of monitor, diagnose, act (pattern 5); not scheduled to build ([ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md))
 - **Users:** Platform engineers, site reliability engineers, model risk management, FinOps
 
 ## Summary
@@ -36,19 +36,7 @@ Once a firm runs more than a handful of AI agents, someone has to watch them: wh
 | Less repetitive operations work | Engineer hours spent on routine triage and reporting |
 | Changes stay reviewed and reversible | Share of infrastructure changes through pull requests (target: 100%) |
 
-**Illustrative value model** (assumptions to replace with real figures):
-
-| Assumption | Example value |
-|---|---|
-| Agents in production | 20 |
-| Hours to prepare monitoring evidence per agent per quarter today | 16 |
-| Share of that preparation the agent automates | 60% |
-| **Evidence-preparation hours saved per year** | 20 × 16 × 4 × 60% ≈ **770 hours** |
-| Engineer hours per week on routine triage and reporting | 10 |
-| Share automated | 50% |
-| **Engineer hours saved per year** | 10 × 52 × 50% = **260 hours** |
-
-The value grows with the size of the fleet. The bigger benefit is permission to scale: firms are unlikely to approve more agents for production until monitoring and model-risk evidence exist.
+No value model: the volumes, handling times and labor rates behind one are domain figures this project can't validate. A pilot would measure the benefits above against the operating unit's own baseline.
 
 ## Cost
 

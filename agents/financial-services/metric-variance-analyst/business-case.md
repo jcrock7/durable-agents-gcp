@@ -1,7 +1,7 @@
 # Business case: Metric Variance Analyst
 
 - **Category:** Data analytics
-- **Status:** Prototype planned, second to build ([ADR-0017](../../../docs/adr/0017-prototype-agent-portfolio.md))
+- **Status:** Example application of analysis and explanation (pattern 4); not scheduled to build ([ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md))
 - **Users:** Business leaders, finance and strategy teams, data analysts
 
 ## Summary
@@ -36,19 +36,7 @@ Leaders regularly ask why a key number moved: "Why did net new assets drop in th
 | Answers people can check | Share of answers with a complete query appendix (target: 100%) |
 | Lower query spend | BigQuery bytes scanned per answer, against a cap |
 
-**Illustrative value model** (assumptions to replace with real volumes):
-
-| Assumption | Example value |
-|---|---|
-| Variance questions per month across the business | 200 |
-| Analyst time per question today | 6 hours |
-| Share the agent can answer without an analyst rewriting it | 60% |
-| Analyst review time for those answers | 30 minutes |
-| Loaded cost per analyst hour | $90 |
-| **Analyst hours saved per month** | 200 × 60% × (6 h − 0.5 h) ≈ **660 hours** |
-| **Labor value per month** | 660 × $90 ≈ **$59,000** |
-
-The harder-to-measure value is decision speed: leaders get an answer while it can still change a decision this week.
+No value model: the volumes, handling times and labor rates behind one are domain figures this project can't validate. A pilot would measure the benefits above against the operating unit's own baseline.
 
 ## Cost
 

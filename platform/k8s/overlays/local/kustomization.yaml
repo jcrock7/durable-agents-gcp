@@ -12,11 +12,9 @@ resources:
   - ../../../services/temporal
   - ../../../services/litellm
   - ../../../../apps/worker/k8s
+  - ../../../../apps/api/k8s
   - ../../../mcp
   - ingress.yaml
-
-components:
-  - ../../components/placeholder-api
 
 configMapGenerator:
   - name: litellm-env
@@ -36,6 +34,10 @@ patches:
   - path: litellm-adc.yaml
 
 replacements:
+  - source: { kind: ConfigMap, name: image-settings, fieldPath: data.API_IMAGE }
+    targets:
+      - select: { kind: Deployment, name: api }
+        fieldPaths: ["spec.template.spec.containers.[name=api].image"]
   - source: { kind: ConfigMap, name: image-settings, fieldPath: data.MCP_DOCS_IMAGE }
     targets:
       - select: { kind: Deployment, name: mcp-docs }

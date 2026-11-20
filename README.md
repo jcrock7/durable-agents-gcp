@@ -78,6 +78,8 @@ Organized by what things belong to: one folder per agent, and the platform by la
 │   ├── financial-services/       # Example applications of the patterns, with business cases
 │   └── technology/, manufacturing/, healthcare/   # Technology: cve-remediator, finops-cost-sentinel, incident-commander (planned)
 ├── apps/
+│   ├── api/                      # Agent portal: Fastify API + the built UI, one Deployment (+ Dockerfile, k8s)
+│   ├── web/                      # Agent portal UI (React + Vite), served by api
 │   ├── worker/                   # The Temporal worker that runs every agent (+ Dockerfile, k8s)
 │   ├── mcp-docs/                 # Custom MCP server: the synthetic document store (+ Dockerfile)
 │   └── mcp-match-engine/         # Custom MCP server: deterministic three-way match, scaled by an HPA
@@ -107,7 +109,7 @@ Organized by what things belong to: one folder per agent, and the platform by la
 └── .env.example                  # All settings; copy to .env (gitignored)
 ```
 
-Planned: `apps/api` and `apps/web` (API and review UI), `packages/contracts`. See [SETUP.md §3](docs/SETUP.md#3-repository-layout).
+Planned: `packages/contracts`. See [SETUP.md §3](docs/SETUP.md#3-repository-layout).
 
 ## Getting started
 
@@ -123,7 +125,7 @@ scripts/local/install-git-hooks.sh    # secret scanning before every commit
 # 2. Local Kubernetes cluster and platform services
 gcloud auth login && gcloud auth application-default login
 scripts/local/k3d-up.sh
-scripts/local/apply-k8s.sh            # Postgres, Temporal, LiteLLM, the agent worker, placeholder API
+scripts/local/apply-k8s.sh            # Postgres, Temporal, LiteLLM, the worker, MCP servers, the portal at http://localhost
 
 # 3. GCP cost guardrails (before any other GCP infrastructure)
 scripts/gcp/cost-guardrails.sh apply  # deploys in dry-run mode
@@ -163,6 +165,6 @@ Details: [SETUP.md §4](docs/SETUP.md#4-security--secrets-hygiene-public-repo-ru
 - [x] Agent portfolio by pattern and tool layer decided ([ADR-0019](docs/adr/0019-pattern-agent-portfolio.md), [ADR-0020](docs/adr/0020-mcp-tools-and-skills.md)); Invoice Exception Resolver designed
 - [x] Invoice Exception Resolver: MCP tools, synthetic ERP, match engine, workflow and evals, every business-case target met on k3d ([results](agents/general/invoice-exception-resolver/evals/RESULTS.md)) (`agents/general/invoice-exception-resolver`)
 - [x] Shared worker, agent-kit, and the first agent: research and summarize, with human review (`agents/general/research-summarize`)
-- [ ] Application: API + review UI (design: [ADR-0021](docs/adr/0021-agent-portal-ui.md), [`docs/design/agent-portal`](docs/design/agent-portal/))
+- [x] Agent portal: API + web UI at http://localhost on k3d, reading Temporal and LiteLLM ([`apps/api`](apps/api/), design: [ADR-0021](docs/adr/0021-agent-portal-ui.md), [`docs/design/agent-portal`](docs/design/agent-portal/))
 - [ ] Evals in CI (promptfoo)
 - [ ] Verification scenarios scripted (worker failure, prompt injection, budget cap, approval, trace)

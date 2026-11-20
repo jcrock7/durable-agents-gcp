@@ -220,3 +220,42 @@ wait_for_mcp() {
   done
   log "MCP servers ready: mcp-erp-read, mcp-erp-write, mcp-docs, mcp-match-engine (check: scripts/local/mcp-verify.sh)"
 }
+
+# The portal API's LiteLLM key (Secret litellm-portal-key, PORTAL_LITELLM_KEY): a user with the
+# proxy_admin_viewer role, so it can read every key's spend and budget, with a $0 budget so it can
+# never spend. Kept while LiteLLM still knows it. Value never printed.
+ensure_litellm_portal_key() {
+  local existing=""
+  if kubectl -n "$NS" get secret litellm-portal-key >/dev/null 2>&1; then
+    existing="$(kubectl -n "$NS" get secret litellm-portal-key -o go-template='{{index .data "PORTAL_LITELLM_KEY" | base64decode}}')"
+  fi
+  kubectl -n "$NS" exec -i deploy/litellm -c litellm -- python -c '
+import json, os, sys, urllib.request, urllib.error
+existing = sys.stdin.read().strip()
+h = {"Authorization": "Bearer " + os.environ["LITELLM_MASTER_KEY"], "Content-Type": "application/json"}
+def call(path, body=None):
+    r = urllib.request.Request("http://localhost:4000" + path, headers=h, data=None if body is None else json.dumps(body).encode())
+    with urllib.request.urlopen(r, timeout=60) as resp:
+        return json.load(resp)
+if existing:
+    try:
+        call("/key/info?key=" + existing)
+        print(existing)
+        sys.exit(0)
+    except urllib.error.HTTPError:
+        pass
+try:
+    call("/user/info?user_id=portal-api")
+except urllib.error.HTTPError:
+    call("/user/new", {"user_id": "portal-api", "user_role": "proxy_admin_viewer", "auto_create_key": False})
+try:
+    call("/key/delete", {"key_aliases": ["portal-api"]})
+except urllib.error.HTTPError:
+    pass
+print(call("/key/generate", {"user_id": "portal-api", "key_alias": "portal-api", "max_budget": 0, "metadata": {"purpose": "portal read-only"}})["key"])
+' <<<"$existing" \
+    | sed 's/^/PORTAL_LITELLM_KEY=/' \
+    | kubectl -n "$NS" create secret generic litellm-portal-key --from-env-file=/dev/stdin --dry-run=client -o yaml \
+    | kubectl apply -f - >/dev/null
+  log "LiteLLM portal key in place (viewer role, no spend)"
+}

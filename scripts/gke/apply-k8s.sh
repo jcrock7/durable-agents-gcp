@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Apply the platform to the GKE cluster (platform/k8s/overlays/gke): CloudNativePG operator,
 # secrets from Secret Manager, namespace and policies, Postgres (with GCS backups), Temporal,
-# LiteLLM and the agent worker (on Spot), Gateway + HTTPS + IAP, and (until the real API exists)
-# a placeholder API.
+# LiteLLM and the agent worker (on Spot), the MCP servers and their synthetic ERP, Gateway + HTTPS
+# + IAP, and the agent portal (apps/api).
 #
 # Usage: scripts/gke/apply-k8s.sh [diff]
 #
@@ -63,6 +63,7 @@ log "wrote ${OVERLAY#"$REPO_ROOT"/}/cluster.env"
 "${REPO_ROOT}/scripts/gke/build-push.sh" worker
 "${REPO_ROOT}/scripts/gke/build-push.sh" mcp-docs
 "${REPO_ROOT}/scripts/gke/build-push.sh" mcp-match-engine
+"${REPO_ROOT}/scripts/gke/build-push.sh" api
 
 if [[ "${1:-}" == "diff" ]]; then
   kubectl diff -k "$OVERLAY" || true
@@ -82,6 +83,7 @@ wait_for_mcp
 load_erp
 ensure_litellm_ui_admin
 ensure_litellm_agent_keys
+ensure_litellm_portal_key
 wait_for_worker
 
 # 5. Report.

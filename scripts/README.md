@@ -17,7 +17,7 @@ Folders are named for **where and how often** you run them. The full order, with
 | `local/verify-tools.sh` | Checks every tool is installed; fails if one is missing | — |
 | `local/install-git-hooks.sh` | Installs pre-commit + gitleaks so secrets can't be committed | — |
 | `local/k3d-up.sh` / `k3d-down.sh` | Creates / deletes (or `--stop` pauses) the local cluster | `K3D_*` |
-| `local/apply-k8s.sh` | Builds the worker, docs and match-engine images, then deploys the platform to k3d: operator, secrets, Postgres, Temporal, LiteLLM, agent keys, worker, MCP servers (and loads the synthetic ERP once), placeholder API. `diff` previews | `PROJECT_ID` |
+| `local/apply-k8s.sh` | Builds the worker, portal, docs and match-engine images, then deploys the platform to k3d: operator, secrets, Postgres, Temporal, LiteLLM, agent keys, worker, MCP servers (and loads the synthetic ERP once), placeholder API. `diff` previews | `PROJECT_ID` |
 | `local/build-push.sh [app]` | Builds `apps/<app>/Dockerfile` (default `worker`), pushes it to the k3d registry, records it in `overlays/local/images.env`. Run by `apply-k8s.sh` | `K3D_REGISTRY_*` |
 | `local/load-secrets.sh` | Optional: copies `SECRET_*` values from `.env` into a k3d Secret `agent-secrets`, for third-party keys an agent may need. Not used by the platform | `SECRET_*` |
 | `local/mcp-verify.sh` | Port-forwards the MCP servers and checks them through the agent's allow-listed client: tools per server, one call each, write tools hidden from the model. Changes no data | — |
@@ -29,7 +29,7 @@ Folders are named for **where and how often** you run them. The full order, with
 | `gcp/foundation.sh` | `plan`, `apply`, `output`, `destroy` for the persistent layer: registry, backup bucket, service accounts, secrets, IAP, CI federation | Foundation block |
 | `gke/up.sh` | Creates the per-session cluster layer and points kubectl at it. `plan` previews | Cluster block |
 | `gke/build-push.sh [app]` | Builds `apps/<app>/Dockerfile` (default `worker`), pushes it to Artifact Registry, records it in `overlays/gke/images.env`. Run by `apply-k8s.sh` | `PROJECT_ID`, `REGION`, `AR_REPO` |
-| `gke/apply-k8s.sh` | Builds the worker, docs and match-engine images, then deploys the platform to GKE, with secrets from Secret Manager, Spot, backups, Gateway + IAP. `diff` previews | `IAP_OAUTH_*` |
+| `gke/apply-k8s.sh` | Builds the worker, portal, docs and match-engine images, then deploys the platform to GKE, with secrets from Secret Manager, Spot, backups, Gateway + IAP. `diff` previews | `IAP_OAUTH_*` |
 | `gke/down.sh` | Backs up Postgres, deletes Gateways, destroys the cluster layer. `--yes`, `--no-backup` | Cluster block |
 | `gke/check-orphans.sh` | Lists anything still billing after a teardown | — |
 

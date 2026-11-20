@@ -39,6 +39,7 @@ log "models (LOCAL_MODELS=${LOCAL_MODELS}): fast=${fast}, smart=${smart}"
 "${REPO_ROOT}/scripts/local/build-push.sh" worker
 "${REPO_ROOT}/scripts/local/build-push.sh" mcp-docs
 "${REPO_ROOT}/scripts/local/build-push.sh" mcp-match-engine
+"${REPO_ROOT}/scripts/local/build-push.sh" api
 
 if [[ "${1:-}" == "diff" ]]; then
   kubectl diff -k "$OVERLAY" || true
@@ -64,6 +65,7 @@ wait_for_mcp
 load_erp
 ensure_litellm_ui_admin
 ensure_litellm_agent_keys
+ensure_litellm_portal_key
 wait_for_worker
 
 log "ready:"

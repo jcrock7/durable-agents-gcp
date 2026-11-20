@@ -6,6 +6,7 @@
     { "path": "agents/general/invoice-exception-resolver" },
     { "path": "apps/mcp-docs" },
     { "path": "apps/mcp-match-engine" },
+    { "path": "apps/api" },
     { "path": "apps/worker" }
   ]
 }

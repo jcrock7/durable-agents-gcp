@@ -32,12 +32,18 @@ export async function researchAndSummarize(rawInput: ResearchInput): Promise<Res
   }
   const input = parsed.data;
   const { limits } = agentConfig;
-  const progress: Progress = { stage: "planning", queries: [], sources: [], draftVersion: 0 };
+  const progress: Progress = { stage: "planning", queries: [], sources: [], draftVersion: 0, timeline: [] };
+  const step = (name: string, detail = "", state: "done" | "now" = "done") => {
+    const last = progress.timeline!.at(-1);
+    if (last?.state === "now") last.state = "done";
+    progress.timeline!.push({ name, at: new Date().toISOString(), detail, state });
+  };
   setHandler(progressQuery, () => progress);
   const review = new ReviewGate();
 
   const finish = (status: ResearchStatus, extra: Partial<ResearchResult> = {}): ResearchResult => {
     progress.stage = "done";
+    step(`Finished: ${status}`, extra.reason ?? "");
     return {
       status,
       question: input.question,
@@ -53,11 +59,13 @@ export async function researchAndSummarize(rawInput: ResearchInput): Promise<Res
   try {
     // 1. Plan searches.
     progress.queries = await planQueries({ question: input.question });
+    step("Plan searches", `${progress.queries.length} queries`);
 
     // 2. Search, in parallel, and pick distinct articles across queries.
     progress.stage = "searching";
     const results = await Promise.all(progress.queries.map((query) => searchWikipedia({ query })));
     const picked = selectSources(results, input.maxSources);
+    step("Search", `${picked.length} articles picked`);
 
     // 3. Read the articles, in parallel. An article that can't be read is skipped.
     progress.stage = "reading";
@@ -69,6 +77,7 @@ export async function researchAndSummarize(rawInput: ResearchInput): Promise<Res
       }
     }
     progress.sources = sources.map(({ id, title, url }) => ({ id, title, url }));
+    step("Read sources", `${sources.length} of ${picked.length} read`);
     if (sources.length === 0) {
       return finish("no_sources", { reason: "no readable Wikipedia articles matched the question" });
     }
@@ -78,16 +87,22 @@ export async function researchAndSummarize(rawInput: ResearchInput): Promise<Res
     let draft: Draft = await writeDraft({ question: input.question, sources });
     progress.draft = draft;
     progress.draftVersion = 1;
+    step("Draft", "version 1");
     if (!input.requireApproval) return finish("auto_approved");
 
     // 5. Human review: approve, or reject with feedback for another draft.
     for (;;) {
       progress.stage = "awaiting_review";
+      step("Waiting for approval", `draft ${progress.draftVersion}`, "now");
       const decision = await review.wait(progress.draftVersion, limits.reviewTimeout);
       if (!decision) {
         return finish("expired", { reason: `no review within ${limits.reviewTimeout}` });
       }
-      if (decision.approved) return finish("approved", { reviewer: decision.reviewer });
+      if (decision.approved) {
+        step("Approved", decision.reviewer ?? "");
+        return finish("approved", { reviewer: decision.reviewer });
+      }
+      step("Sent back", decision.feedback ?? "");
 
       progress.lastFeedback = decision.feedback;
       if (progress.draftVersion > limits.maxRevisions) {
@@ -101,6 +116,7 @@ export async function researchAndSummarize(rawInput: ResearchInput): Promise<Res
       });
       progress.draft = draft;
       progress.draftVersion += 1;
+      step("Revise draft", `version ${progress.draftVersion}`);
     }
   } catch (error) {
     // A guardrail block is an answer, not a crash: end the run with the reason.

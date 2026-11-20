@@ -1,0 +1,26 @@
+{
+  "name": "@agents/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent portal API: reads Temporal, LiteLLM and Kubernetes, approves and steers cases, and serves the web UI (ADR-0013, ADR-0021)",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/app.d.ts",
+      "default": "./dist/app.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@agents/invoice-exception-resolver": "workspace:*",
+    "@fastify/static": "10.1.10",
+    "@temporalio/client": "1.25.0",
+    "fastify": "5.12.8",
+    "zod": "4.6.7"
+  }
+}

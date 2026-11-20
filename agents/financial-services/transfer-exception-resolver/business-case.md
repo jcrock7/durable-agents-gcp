@@ -1,7 +1,7 @@
 # Business case: Transfer Exception Resolver
 
 - **Category:** Business problem (brokerage operations)
-- **Status:** Prototype planned ([ADR-0017](../../../docs/adr/0017-prototype-agent-portfolio.md))
+- **Status:** Example application of exception resolution (pattern 1); not scheduled to build ([ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md))
 - **Users:** Account-transfer operations specialists
 
 ## Summary
@@ -37,18 +37,7 @@ When a customer moves a brokerage account in from another firm, the transfer is 
 | Fewer customers who give up mid-transfer | Share of rejected transfers never completed |
 | Consistent, documented handling | Share of cases with full decision history (target: 100%) |
 
-**Illustrative value model** (assumptions to replace with real volumes):
-
-| Assumption | Example value |
-|---|---|
-| Rejected transfers per month | 2,000 |
-| Specialist handling time per exception today | 40 minutes |
-| Handling time removed by the agent | 50% |
-| Loaded cost per specialist hour | $60 |
-| **Specialist hours saved per month** | 2,000 × 40 min × 50% ≈ **670 hours** |
-| **Labor value per month** | 670 × $60 ≈ **$40,000** |
-
-The larger value is usually retained assets: if faster resolution saves even a small share of transfers that would otherwise be abandoned, the assets kept are worth far more than the labor saved. That figure depends on transfer sizes and abandonment rates, which the prototype can't measure; a pilot would.
+No value model: the volumes, handling times and labor rates behind one are domain figures this project can't validate. A pilot would measure the benefits above against the operating unit's own baseline.
 
 ## Cost
 

@@ -1,0 +1,22 @@
+{
+  "name": "@agents/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent portal UI (ADR-0021): agent sidebar, case workspace, Mission Control. Built by Vite and served by apps/api",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p . && vite build",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "react": "19.1.10",
+    "react-dom": "19.1.10"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "vite": "8.3.5"
+  }
+}

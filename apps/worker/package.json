@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@agents/agent-kit": "workspace:*",
+    "@agents/invoice-exception-resolver": "workspace:*",
     "@agents/research-summarize": "workspace:*",
     "@temporalio/worker": "1.25.0"
   }

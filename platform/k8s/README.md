@@ -9,8 +9,6 @@ platform/k8s/
 │   ├── serviceaccounts.yaml      # api, worker, litellm (no token automount)
 │   ├── limits.yaml               # default requests + namespace quota (4 vCPU, 8 GiB, 30 pods, no LoadBalancers)
 │   └── networkpolicies.yaml      # deny all inbound, then allow only the architecture's paths
-├── components/
-│   └── placeholder-api/          # stand-in "api" (hello-app) to test the edge before the real API exists
 └── overlays/
     ├── local/                    # k3d: Traefik Ingress on http://localhost, no sign-in
     └── gke/                      # GKE: Gateway + managed certificate + IAP, Workload Identity annotations
@@ -20,7 +18,7 @@ platform/k8s/
 
 - **base** holds plain manifests shared by every environment.
 - **overlays** start from base and add or patch what differs. `kubectl apply -k <overlay>` renders and applies one.
-- **components** are optional add-ons an overlay can include (`components:`). The placeholder API is one, so removing it later is a one-line change.
+- **components** are optional add-ons an overlay can include (`components:`). There are none now: the placeholder API that stood in for the portal has been replaced by `apps/api`.
 - **Environment values** (IP and certificate names, hostname, service account emails, IAP client ID) aren't committed. `scripts/gke/apply-k8s.sh` writes them from Terraform outputs and `.env` into `overlays/gke/cluster.env` (gitignored). The overlay's `replacements` copy them into the manifests. See `cluster.env.example`. App images work the same way: `build-push.sh` writes `overlays/<env>/images.env` (gitignored, see `images.env.example`), and the overlay sets the worker image from it.
 
 Preview without applying: `kubectl kustomize platform/k8s/overlays/local`, or `scripts/gke/apply-k8s.sh diff` on GKE.
@@ -45,7 +43,7 @@ Workloads must use the label `app.kubernetes.io/name: api | worker | litellm | t
 ```bash
 scripts/local/k3d-up.sh
 scripts/local/apply-k8s.sh
-curl http://localhost/          # "Hello, world!" from the placeholder API (also starts Postgres, Temporal, LiteLLM)
+open http://localhost/          # the agent portal (apps/api)
 ```
 
 ### GKE
@@ -72,9 +70,9 @@ scripts/gke/apply-k8s.sh       # this layer
 
 `scripts/gke/down.sh` deletes the Gateway first, so GKE removes the load balancer before Terraform destroys the network.
 
-## When the real API arrives
+## The portal at the edge
 
-Remove `../../components/placeholder-api` from both overlays and add the app's manifests. The real API must:
+Both overlays deploy the agent portal from [`apps/api/k8s`](../../apps/api/k8s/) ([README](../../apps/api/README.md)), which replaced the placeholder API. It keeps the edge's contract:
 
 - use the `api` service account and the `app.kubernetes.io/name: api` label
 - expose a Service named `api` on port 80

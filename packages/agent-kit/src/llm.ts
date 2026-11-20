@@ -36,3 +36,12 @@ export function requireEnv(name: string): string {
   if (!value) throw new Error(`environment variable ${name} is not set`);
   return value;
 }
+
+/**
+ * The cost LiteLLM charged for one model call, from its x-litellm-response-cost response header
+ * (USD; 0 if absent, for example with a provider that doesn't report it).
+ */
+export function gatewayCostUsd(headers: Record<string, string | undefined> | undefined): number {
+  const value = Number(headers?.["x-litellm-response-cost"] ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}

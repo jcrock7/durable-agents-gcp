@@ -1,14 +1,14 @@
 # Agents
 
-Agents are grouped by industry, then one folder per agent. Everything an agent needs lives in its folder: workflows, activities, tools, prompts and tests. Shared plumbing lives in [`packages/agent-kit`](../packages/agent-kit), and the single worker process in [`apps/worker`](../apps/worker) runs every agent, whatever its industry ([ADR-0013](../docs/adr/0013-consolidated-workloads.md), [ADR-0016](../docs/adr/0016-repository-structure.md)).
+The portfolio is one agent per reusable pattern ([ADR-0019](../docs/adr/0019-pattern-agent-portfolio.md)); tools are MCP servers and skills are versioned instruction packages ([ADR-0020](../docs/adr/0020-mcp-tools-and-skills.md)). Agents are grouped by industry, then one folder per agent. Everything an agent needs lives in its folder: workflows, activities, tools, prompts and tests. Shared plumbing lives in [`packages/agent-kit`](../packages/agent-kit), and the single worker process in [`apps/worker`](../apps/worker) runs every agent, whatever its industry ([ADR-0013](../docs/adr/0013-consolidated-workloads.md), [ADR-0016](../docs/adr/0016-repository-structure.md)).
 
 | Industry | Agents | Status |
 |---|---|---|
-| [general](general/) | Industry-neutral agents that prove the platform: [research-summarize](general/research-summarize/) | Built |
-| [financial-services](financial-services/) | Five agents for brokerage, retirement and compliance work, with business cases ([ADR-0017](../docs/adr/0017-prototype-agent-portfolio.md)) | Planned |
-| [manufacturing](manufacturing/) | Production, quality, maintenance and supply-chain work | To be defined |
-| [healthcare](healthcare/) | Administrative and operational work for providers, payers and life sciences | To be defined |
-| [technology](technology/) | Engineering, IT operations, support and security work | To be defined |
+| [general](general/) | Industry-neutral agents: [research-summarize](general/research-summarize/) (built), [invoice-exception-resolver](general/invoice-exception-resolver/) (designed, next to build), `audit-evidence-collector` | Built / designed / planned |
+| [financial-services](financial-services/) | Five example applications of the patterns, with business cases ([ADR-0017](../docs/adr/0017-prototype-agent-portfolio.md)) | Examples, not scheduled |
+| [manufacturing](manufacturing/) | How the five patterns carry over to production, quality, maintenance and supply chain | Pattern notes only |
+| [healthcare](healthcare/) | How the five patterns carry over to provider, payer and life-sciences operations | Pattern notes only |
+| [technology](technology/) | `cve-remediator`, `finops-cost-sentinel`, `incident-commander` | Planned |
 
 All agents use synthetic or public data only. To add an industry, create `agents/<industry>/` with a README listing its agents (copy [financial-services/README.md](financial-services/README.md)).
 

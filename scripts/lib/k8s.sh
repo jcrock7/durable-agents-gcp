@@ -7,6 +7,7 @@ NS="${NS:-agents}"
 # Each agent's LiteLLM budget in USD per 30 days. Adding an agent: add it here.
 AGENT_BUDGETS_USD=(
   "research-summarize=2"
+  "invoice-exception-resolver=3"
 )
 
 # Install the CloudNativePG operator (pinned in platform/services/postgres/operator) and wait for it.
@@ -170,4 +171,91 @@ wait_for_services() {
   log "waiting for LiteLLM (runs database migrations on first start)"
   kubectl -n "$NS" rollout status deployment/litellm --timeout=8m \
     || warn "LiteLLM not ready yet: kubectl -n $NS logs deploy/litellm"
+}
+
+# Postgres logins for the synthetic ERP's MCP servers (platform/mcp): erp_reader for erp-read,
+# erp_writer for erp-write. The data is synthetic, so on k3d and GKE alike the passwords are
+# random, generated once and kept in the cluster. Values never printed.
+ensure_erp_secrets() {
+  local pair name user
+  for pair in pg-erp-reader:erp_reader pg-erp-writer:erp_writer; do
+    name="${pair%%:*}"
+    user="${pair##*:}"
+    kubectl -n "$NS" get secret "$name" >/dev/null 2>&1 && continue
+    apply_secret "$name" kubernetes.io/basic-auth "username=${user}" "password=$(random_password 32)"
+    log "created Secret ${name}"
+  done
+}
+
+# Load the synthetic ERP (schema, grants and data) into database "erp". The seed SQL is generated
+# into the docs MCP server image alongside the documents, so rows and documents always agree.
+#   load_erp          load if the ERP has no tables yet
+#   load_erp force    drop and reload (resets every resolution and outbox message)
+load_erp() {
+  local primary loaded
+  kubectl -n "$NS" wait database.postgresql.cnpg.io/erp --for=jsonpath='{.status.applied}'=true --timeout=5m >/dev/null \
+    || die "database erp not created: kubectl -n $NS describe database erp"
+  kubectl -n "$NS" rollout status deployment/mcp-docs --timeout=3m >/dev/null \
+    || die "mcp-docs not ready: kubectl -n $NS logs deploy/mcp-docs"
+  primary="$(kubectl -n "$NS" get cluster.postgresql.cnpg.io/agents-pg -o jsonpath='{.status.currentPrimary}')"
+  loaded="$(kubectl -n "$NS" exec "$primary" -c postgres -- psql -tAq erp -c "select to_regclass('erp.invoices') is not null")"
+  if [[ "$loaded" == "t" && "${1:-}" != "force" ]]; then
+    log "synthetic ERP already loaded (scripts/local/erp-load.sh reloads it)"
+    return 0
+  fi
+  log "loading the synthetic ERP into database erp"
+  # MSYS_NO_PATHCONV: stops Git Bash on Windows from rewriting the in-container path.
+  MSYS_NO_PATHCONV=1 kubectl -n "$NS" exec deploy/mcp-docs -c docs -- cat /seed/seed.sql \
+    | kubectl -n "$NS" exec -i "$primary" -c postgres -- psql -q -v ON_ERROR_STOP=1 -d erp >/dev/null
+  log "synthetic ERP: $(kubectl -n "$NS" exec "$primary" -c postgres -- psql -tAq erp -c \
+    "select count(*) || ' invoices, ' || (select count(*) from erp.exceptions where status = 'open') || ' open exceptions' from erp.invoices")"
+}
+
+# Wait for the MCP servers.
+wait_for_mcp() {
+  local d
+  for d in mcp-erp-read mcp-erp-write mcp-docs mcp-match-engine; do
+    kubectl -n "$NS" rollout status "deployment/$d" --timeout=3m >/dev/null \
+      || warn "$d not ready yet: kubectl -n $NS logs deploy/$d"
+  done
+  log "MCP servers ready: mcp-erp-read, mcp-erp-write, mcp-docs, mcp-match-engine (check: scripts/local/mcp-verify.sh)"
+}
+
+# The portal API's LiteLLM key (Secret litellm-portal-key, PORTAL_LITELLM_KEY): a user with the
+# proxy_admin_viewer role, so it can read every key's spend and budget, with a $0 budget so it can
+# never spend. Kept while LiteLLM still knows it. Value never printed.
+ensure_litellm_portal_key() {
+  local existing=""
+  if kubectl -n "$NS" get secret litellm-portal-key >/dev/null 2>&1; then
+    existing="$(kubectl -n "$NS" get secret litellm-portal-key -o go-template='{{index .data "PORTAL_LITELLM_KEY" | base64decode}}')"
+  fi
+  kubectl -n "$NS" exec -i deploy/litellm -c litellm -- python -c '
+import json, os, sys, urllib.request, urllib.error
+existing = sys.stdin.read().strip()
+h = {"Authorization": "Bearer " + os.environ["LITELLM_MASTER_KEY"], "Content-Type": "application/json"}
+def call(path, body=None):
+    r = urllib.request.Request("http://localhost:4000" + path, headers=h, data=None if body is None else json.dumps(body).encode())
+    with urllib.request.urlopen(r, timeout=60) as resp:
+        return json.load(resp)
+if existing:
+    try:
+        call("/key/info?key=" + existing)
+        print(existing)
+        sys.exit(0)
+    except urllib.error.HTTPError:
+        pass
+try:
+    call("/user/info?user_id=portal-api")
+except urllib.error.HTTPError:
+    call("/user/new", {"user_id": "portal-api", "user_role": "proxy_admin_viewer", "auto_create_key": False})
+try:
+    call("/key/delete", {"key_aliases": ["portal-api"]})
+except urllib.error.HTTPError:
+    pass
+print(call("/key/generate", {"user_id": "portal-api", "key_alias": "portal-api", "max_budget": 0, "metadata": {"purpose": "portal read-only"}})["key"])
+' <<<"$existing" \
+    | sed 's/^/PORTAL_LITELLM_KEY=/' \
+    | kubectl -n "$NS" create secret generic litellm-portal-key --from-env-file=/dev/stdin --dry-run=client -o yaml \
+    | kubectl apply -f - >/dev/null
+  log "LiteLLM portal key in place (viewer role, no spend)"
 }

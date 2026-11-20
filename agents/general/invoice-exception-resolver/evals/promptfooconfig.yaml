@@ -1,0 +1,25 @@
+# End-to-end evals for the Invoice Exception Resolver (ADR-0009): every labelled exception in the
+# synthetic ERP runs through the deployed agent (real MCP servers, real models through LiteLLM),
+# and each case is scored against its label. Run with scripts/local/invoice-evals.sh, which
+# port-forwards Temporal, runs this suite and writes evals/RESULTS.md with the business case's
+# success measures (report.mjs).
+description: Invoice Exception Resolver on the labelled synthetic exceptions
+
+# The "prompt" is the case: the provider runs the whole workflow for the invoice.
+prompts:
+  - "{{invoiceId}}"
+
+providers:
+  - id: file://provider.mjs
+    label: invoice-exception-resolver
+
+tests: file://tests.mjs
+
+defaultTest:
+  assert:
+    - type: javascript
+      value: file://assert.mjs
+
+evaluateOptions:
+  maxConcurrency: 6
+  cache: false

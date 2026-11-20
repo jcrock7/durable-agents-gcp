@@ -4,7 +4,7 @@ The three shared services every agent depends on, as Kustomize bases. They aren'
 
 | Service | What runs | Capacity | Decision records |
 |---|---|---|---|
-| [`postgres/`](postgres/) | CloudNativePG operator (cluster-wide) and one Postgres 17 instance, `agents-pg`, with pgvector. Databases `app` and `litellm`, each with its own role | On-demand, 5 Gi disk | [0007](../../docs/adr/0007-postgres-pgvector.md) |
+| [`postgres/`](postgres/) | CloudNativePG operator (cluster-wide) and one Postgres 17 instance, `agents-pg`, with pgvector. Databases `app`, `litellm` and `erp` (the synthetic ERP behind the [MCP servers](../mcp/)), each with its own roles | On-demand, 5 Gi disk | [0007](../../docs/adr/0007-postgres-pgvector.md) |
 | [`temporal/`](temporal/) | Temporal CLI dev server: gRPC on 7233, Web UI on 8233, SQLite history on a 1 Gi volume | On-demand | [0002](../../docs/adr/0002-temporal-durable-runtime.md), [0011](../../docs/adr/0011-temporal-single-pod.md) |
 | [`litellm/`](litellm/) | LiteLLM gateway on 4000: model aliases `fast` and `smart` on Vertex AI, Vertex safety filters, fallback smart → fast, spend logs in Postgres, prompt-injection guardrail | Spot on GKE | [0005](../../docs/adr/0005-llm-gateway-litellm.md), [0012](../../docs/adr/0012-guardrails-lightweight.md) |
 
@@ -21,7 +21,7 @@ Every service runs as a non-root user with privilege escalation off and all Linu
 | LiteLLM placement | Any node | Spot, 25s shutdown |
 | Postgres backups | None | WAL archived continuously and a base backup before teardown, to `gs://<project>-pg-backups/agents-pg/<cluster-created-time>/`, as `wl-postgres` |
 
-Secrets are synced into Kubernetes Secrets by the apply scripts (`pg-app`, `pg-litellm`, `litellm`), because CloudNativePG and LiteLLM read credentials from Secrets and environment variables. The GKE Secret Manager add-on stays enabled for workloads that want secrets mounted as files.
+Secrets are synced into Kubernetes Secrets by the apply scripts (`pg-app`, `pg-litellm`, `litellm`, and `pg-erp-reader` / `pg-erp-writer` for the ERP MCP servers, random and kept in the cluster because the ERP is synthetic), because CloudNativePG and LiteLLM read credentials from Secrets and environment variables. The GKE Secret Manager add-on stays enabled for workloads that want secrets mounted as files.
 
 ## Apply
 

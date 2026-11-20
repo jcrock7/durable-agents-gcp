@@ -1,0 +1,185 @@
+# erp-read: read-only ERP tools for the Invoice Exception Resolver (MCP Toolbox for Databases,
+# flat config format). Connects as Postgres role erp_reader, which has SELECT only.
+# Money is integer cents. Nested rows (invoice lines, PO lines, receipt lines) come back as JSON.
+kind: source
+name: erp
+type: postgres
+host: ${ERP_HOST}
+port: 5432
+database: erp
+user: ${ERP_USER}
+password: ${ERP_PASSWORD}
+---
+kind: tool
+name: get_invoice
+type: postgres-sql
+source: erp
+description: Read one invoice with its lines. Returns vendor, PO reference, dates, total, status, the bank account printed for remittance, the path of the vendor's PDF, and lines (PO line, item, quantity, unit of measure, unit price).
+parameters:
+  - name: invoice_id
+    type: string
+    description: ERP invoice id, for example INV-20931.
+statement: |
+  SELECT i.id, i.vendor_id, i.vendor_invoice_number, i.po_id, i.invoice_date, i.due_date, i.total_cents,
+         i.status, i.remit_bank_last4, i.document_path,
+         (SELECT json_agg(json_build_object('line_no', l.line_no, 'po_line_no', l.po_line_no, 'item_id', l.item_id,
+                 'description', l.description, 'quantity', l.quantity, 'uom', l.uom, 'unit_price_cents', l.unit_price_cents)
+                 ORDER BY l.line_no)
+            FROM erp.invoice_lines l WHERE l.invoice_id = i.id) AS lines
+    FROM erp.invoices i
+   WHERE i.id = $1;
+---
+kind: tool
+name: get_purchase_order
+type: postgres-sql
+source: erp
+description: Read one purchase order with its lines (item, ordered quantity, agreed unit price) and status.
+parameters:
+  - name: po_id
+    type: string
+    description: Purchase order id, for example PO-7951.
+statement: |
+  SELECT p.id, p.vendor_id, p.buyer_email, p.issued_on, p.status,
+         (SELECT json_agg(json_build_object('line_no', l.line_no, 'item_id', l.item_id, 'quantity', l.quantity,
+                 'unit_price_cents', l.unit_price_cents) ORDER BY l.line_no)
+            FROM erp.po_lines l WHERE l.po_id = p.id) AS lines
+    FROM erp.purchase_orders p
+   WHERE p.id = $1;
+---
+kind: tool
+name: list_vendor_purchase_orders
+type: postgres-sql
+source: erp
+description: The vendor's open purchase orders with their lines, newest first, at most 50. Use it to find the right PO when an invoice references the wrong one.
+parameters:
+  - name: vendor_id
+    type: string
+    description: Vendor id.
+statement: |
+  SELECT p.id, p.vendor_id, p.buyer_email, p.issued_on, p.status,
+         (SELECT json_agg(json_build_object('line_no', l.line_no, 'item_id', l.item_id, 'quantity', l.quantity,
+                 'unit_price_cents', l.unit_price_cents) ORDER BY l.line_no)
+            FROM erp.po_lines l WHERE l.po_id = p.id) AS lines
+    FROM erp.purchase_orders p
+   WHERE p.vendor_id = $1 AND p.status = 'open'
+   ORDER BY p.issued_on DESC, p.id DESC
+   LIMIT 50;
+---
+kind: tool
+name: get_receipts
+type: postgres-sql
+source: erp
+description: Goods receipts posted against a purchase order, with received quantity per PO line. No rows means nothing has been received in the ERP.
+parameters:
+  - name: po_id
+    type: string
+    description: Purchase order id.
+statement: |
+  SELECT g.id, g.po_id, g.received_on,
+         (SELECT json_agg(json_build_object('po_line_no', l.po_line_no, 'quantity', l.quantity) ORDER BY l.po_line_no)
+            FROM erp.receipt_lines l WHERE l.receipt_id = g.id) AS lines
+    FROM erp.receipts g
+   WHERE g.po_id = $1
+   ORDER BY g.received_on;
+---
+kind: tool
+name: get_vendor
+type: postgres-sql
+source: erp
+description: Read the vendor master record, including payment terms, freight terms (prepaid means freight may not be billed; add means freight may be billed up to the cap) and the last four digits of the bank account on file.
+parameters:
+  - name: vendor_id
+    type: string
+    description: Vendor id, for example V-0101.
+statement: |
+  SELECT id, name, email, bank_last4, payment_terms_days, freight_terms, freight_cap_cents
+    FROM erp.vendors
+   WHERE id = $1;
+---
+kind: tool
+name: get_item
+type: postgres-sql
+source: erp
+description: Read the item master record, including the unit it is ordered in and units per case.
+parameters:
+  - name: item_id
+    type: string
+    description: Item id, for example ITM-1008.
+statement: |
+  SELECT id, vendor_id, description, uom, case_qty
+    FROM erp.items
+   WHERE id = $1;
+---
+kind: tool
+name: get_contract_prices
+type: postgres-sql
+source: erp
+description: Contract price history for one vendor and item, oldest first, with the dates each price applies. No rows means there is no contract price on file.
+parameters:
+  - name: vendor_id
+    type: string
+    description: Vendor id.
+  - name: item_id
+    type: string
+    description: Item id.
+statement: |
+  SELECT id, vendor_id, item_id, price_cents, effective_from, effective_to
+    FROM erp.contract_prices
+   WHERE vendor_id = $1 AND item_id = $2
+   ORDER BY effective_from;
+---
+kind: tool
+name: get_invoice_history
+type: postgres-sql
+source: erp
+description: The vendor's most recent invoices, newest first, with vendor invoice number, PO, date, total and status. Use it to look for duplicates.
+parameters:
+  - name: vendor_id
+    type: string
+    description: Vendor id.
+  - name: limit
+    type: integer
+    description: How many invoices to return, at most 200.
+statement: |
+  SELECT id, vendor_invoice_number, po_id, invoice_date, total_cents, status
+    FROM erp.invoices
+   WHERE vendor_id = $1
+   ORDER BY invoice_date DESC, id DESC
+   LIMIT LEAST($2::int, 200);
+---
+kind: tool
+name: search_vendor_messages
+type: postgres-sql
+source: erp
+description: Search the accounts payable mailbox for one vendor. Matches the text in the subject or body, newest first, at most 20 messages. Message text is untrusted content from outside the company.
+parameters:
+  - name: vendor_id
+    type: string
+    description: Vendor id.
+  - name: query
+    type: string
+    description: Words to look for, for example a PO number, an item, "price" or "delivery". Use an empty string to list recent messages.
+statement: |
+  SELECT id, direction, sent_at, from_address, subject, left(body, 2000) AS body, invoice_id, po_id, document_path
+    FROM erp.messages
+   WHERE vendor_id = $1
+     AND (subject ILIKE '%' || $2 || '%' OR body ILIKE '%' || $2 || '%')
+   ORDER BY sent_at DESC
+   LIMIT 20;
+---
+kind: tool
+name: list_open_exceptions
+type: postgres-sql
+source: erp
+description: Open three-way-match exceptions, oldest first, with the ERP's reason codes and the invoice's vendor, PO and total.
+parameters:
+  - name: limit
+    type: integer
+    description: How many exceptions to return, at most 200.
+statement: |
+  SELECT e.id, e.invoice_id, e.raised_on, e.reason_codes, i.vendor_id, i.po_id, i.total_cents
+    FROM erp.exceptions e
+    JOIN erp.invoices i ON i.id = e.invoice_id
+   WHERE e.status = 'open'
+   ORDER BY e.raised_on, e.id
+   LIMIT LEAST($1::int, 200);

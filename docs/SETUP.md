@@ -31,13 +31,13 @@
 
 | # | Agent | Description | Stack | Status |
 |---|-------|-------------|-------|--------|
-| 1 | `aml-alert-investigator` | Gathers evidence for AML alerts and drafts a cited case narrative for an investigator | Shared platform ([Section 2](#2-architecture--tech-stack)) + read-only evidence tools | Planned |
-| 2 | `metric-variance-analyst` | Explains why a metric moved, through governed metric definitions in BigQuery | Shared platform + BigQuery semantic layer | Planned |
-| 3 | `transfer-exception-resolver` | Diagnoses rejected account transfers, drafts fixes and outreach, resubmits after approval | Shared platform + agent-specific tools | Planned |
-| 4 | `rollover-concierge` | Runs the multi-week 401(k)-to-IRA rollover process with deadline tracking | Shared platform + durable timers | Planned |
-| 5 | `agent-fleet-ops` | Monitors the other agents for cost, failures and drift; proposes fixes as pull requests | Shared platform + observability and GitHub tools | Planned |
+| 1 | `invoice-exception-resolver` | Works three-way-match exceptions: evidence, cited proposal, vendor follow-up, approval before anything changes what is paid | Shared platform + MCP Toolbox (synthetic ERP), filesystem MCP, custom `match-engine` | Designed |
+| 2 | `cve-remediator` | Upgrades a vulnerable dependency, tests it in a sandbox, opens a pull request with the evidence | Shared platform + GitHub MCP, OSV.dev, Trivy, custom `sandbox-runner` (GKE Sandbox) | Planned |
+| 3 | `audit-evidence-collector` | Collects IT general controls evidence, tests it against control rules, assembles an audit packet | Shared platform + GitHub MCP, Cloud Asset Inventory, audit logs | Planned |
+| 4 | `finops-cost-sentinel` | Explains cost changes, flags idle compute and GPU spend, proposes rightsizing behind approval | Shared platform + MCP Toolbox (BigQuery billing export, FOCUS sample data), GitHub MCP | Planned |
+| 5 | `incident-commander` | Correlates alerts with recent changes, proposes a rollback a person approves, drafts the postmortem | Shared platform + Kubernetes, Prometheus and Grafana MCP, demo app with injected faults | Planned |
 
-Business cases and build order: [ADR-0017](adr/0017-prototype-agent-portfolio.md).
+Patterns, selection and build order: [ADR-0019](adr/0019-pattern-agent-portfolio.md). Tools and skills: [ADR-0020](adr/0020-mcp-tools-and-skills.md). The earlier financial-services agents ([ADR-0017](adr/0017-prototype-agent-portfolio.md)) remain as example applications in `agents/financial-services/`.
 
 ## 2. Architecture & Tech Stack
 
@@ -112,8 +112,11 @@ Each significant choice has an Architecture Decision Record (ADR) in [`docs/adr/
 | [0014](adr/0014-gke-autopilot-spot.md) | Autopilot + Spot for stateless pods | Accepted |
 | [0015](adr/0015-cost-guardrails.md) | Budget alerts, cluster auto-shutdown, billing hard cap | Accepted |
 | [0016](adr/0016-repository-structure.md) | Repo organized by agent and by platform layer | Accepted |
-| [0017](adr/0017-prototype-agent-portfolio.md) | Five prototype financial-services agents, with business cases | Proposed |
+| [0017](adr/0017-prototype-agent-portfolio.md) | Five prototype financial-services agents, with business cases | Superseded by 0019 |
 | [0018](adr/0018-deployment-gitops-deferred.md) | Deploy with scripts and keyless CI; GitOps controller (Argo CD) deferred | Accepted |
+| [0019](adr/0019-pattern-agent-portfolio.md) | Five agents, one per reusable pattern; financial-services agents become example applications | Proposed |
+| [0020](adr/0020-mcp-tools-and-skills.md) | Tools as in-cluster MCP servers with per-agent allow-lists; skills as versioned packages | Proposed |
+| [0021](adr/0021-agent-portal-ui.md) | Agent portal: case workspace per agent, Mission Control overlay, agent sidebar | Accepted |
 
 ## 3. Repository Layout
 

@@ -1,0 +1,21 @@
+{
+  "name": "@agents/mcp-docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only MCP server over the synthetic document store (invoice PDFs and vendor emails), over Streamable HTTP",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@agents/invoice-exception-resolver": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
+  }
+}

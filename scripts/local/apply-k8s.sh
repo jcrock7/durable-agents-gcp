@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Apply the platform to the local k3d cluster (platform/k8s/overlays/local):
 # CloudNativePG operator, secrets, namespace and policies, Postgres, Temporal, LiteLLM,
-# the agent worker (built from this checkout), and the placeholder API behind Traefik.
+# the agent worker and the docs MCP server (built from this checkout), the ERP MCP servers and
+# their synthetic ERP, and the placeholder API behind Traefik.
 #
 # Usage: scripts/local/apply-k8s.sh [diff]
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
@@ -36,6 +37,9 @@ log "models (LOCAL_MODELS=${LOCAL_MODELS}): fast=${fast}, smart=${smart}"
 
 # Build the worker image from this checkout and push it to the k3d registry (writes images.env).
 "${REPO_ROOT}/scripts/local/build-push.sh" worker
+"${REPO_ROOT}/scripts/local/build-push.sh" mcp-docs
+"${REPO_ROOT}/scripts/local/build-push.sh" mcp-match-engine
+"${REPO_ROOT}/scripts/local/build-push.sh" api
 
 if [[ "${1:-}" == "diff" ]]; then
   kubectl diff -k "$OVERLAY" || true
@@ -45,6 +49,7 @@ fi
 install_cnpg_operator
 kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 ensure_platform_secrets local
+ensure_erp_secrets
 
 if [[ -f "$ADC_FILE" ]]; then
   kubectl -n "$NS" create secret generic gcp-adc --from-file=adc.json="$ADC_FILE" \
@@ -56,8 +61,11 @@ fi
 kubectl apply -k "$OVERLAY"
 kubectl -n "$NS" rollout status deployment/api --timeout=2m
 wait_for_services
+wait_for_mcp
+load_erp
 ensure_litellm_ui_admin
 ensure_litellm_agent_keys
+ensure_litellm_portal_key
 wait_for_worker
 
 log "ready:"

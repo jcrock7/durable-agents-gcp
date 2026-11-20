@@ -1,0 +1,16 @@
+# In-cluster MCP servers (ADR-0020), one Deployment, Service and ServiceAccount each.
+#   erp-read    MCP Toolbox for Databases, Postgres role erp_reader
+#   erp-write   MCP Toolbox for Databases, Postgres role erp_writer (workflow-only tools)
+#   docs        custom (apps/mcp-docs): the synthetic document store, read-only
+#   match-engine custom (apps/mcp-match-engine): deterministic match and adjustments, HPA 1-10
+# Requires the erp database and the Secrets pg-erp-reader and pg-erp-writer, which the apply
+# scripts create; see platform/mcp/README.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - erp-read
+  - erp-write
+  - docs
+  - match-engine
+  - networkpolicies.yaml

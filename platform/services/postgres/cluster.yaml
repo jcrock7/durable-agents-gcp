@@ -1,6 +1,8 @@
 # One Postgres 17 instance managed by CloudNativePG.
 #   database "app"     owner app      (agents, results, pgvector embeddings)
 #   database "litellm" owner litellm  (gateway keys, budgets, spend logs)
+#   database "erp"     owner erp_owner (synthetic ERP for the Invoice Exception Resolver; read by
+#                      MCP server erp-read as erp_reader, written by erp-write as erp_writer)
 # Services created by the operator: agents-pg-rw (read/write), agents-pg-r, agents-pg-ro.
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
@@ -37,3 +39,17 @@ spec:
         login: true
         passwordSecret:
           name: pg-litellm # kubernetes.io/basic-auth, username "litellm"
+      # Synthetic ERP (agents/general/invoice-exception-resolver/data). Grants are in its seed SQL.
+      - name: erp_owner
+        ensure: present
+        login: false
+      - name: erp_reader
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-erp-reader # kubernetes.io/basic-auth, username "erp_reader"
+      - name: erp_writer
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-erp-writer # kubernetes.io/basic-auth, username "erp_writer"

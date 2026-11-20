@@ -1,6 +1,6 @@
 # ADR-0017: Prototype agent portfolio — five financial-services agents
 
-- **Status:** Proposed
+- **Status:** Superseded by [ADR-0019](0019-pattern-agent-portfolio.md). The five agents remain as example applications of its patterns; the shared controls and cost assumptions below still apply
 - **Date:** 2026-11-18
 
 ## Context

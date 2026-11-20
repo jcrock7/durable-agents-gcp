@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePoll, type Agent, type Me, type Mission } from "./api.js";
 import { AgentView } from "./AgentView.js";
 import { CaseTable } from "./CaseTable.js";
-import { Overview } from "./Overview.js";
+import { Overview, showHealth } from "./Overview.js";
 import { Sidebar, type View } from "./Sidebar.js";
 import { Person } from "./icons.js";
 
@@ -27,15 +27,17 @@ interface Route {
   view: View;
   agent?: string;
   case?: string;
+  /** Open and scroll to the Agent Health panel on the overview. */
+  health?: boolean;
 }
 
-/** Routes: #/overview · #/cases · #/cases/needs · #/agent/<agentId>[/case/<workflowId>] */
+/** Routes: #/overview[/health] · #/cases · #/cases/needs · #/agent/<agentId>[/case/<workflowId>] */
 function readHash(): Route {
   const m = /^#\/agent\/([a-z0-9-]+)(?:\/case\/([a-z0-9-]+))?/.exec(location.hash);
   if (m) return { view: "agent", agent: m[1], case: m[2] };
   if (location.hash.startsWith("#/cases/needs")) return { view: "needs" };
   if (location.hash.startsWith("#/cases")) return { view: "cases" };
-  return { view: "overview" };
+  return { view: "overview", health: location.hash.startsWith("#/overview/health") };
 }
 
 type ThemeChoice = "light" | "dark" | "system";
@@ -59,8 +61,9 @@ export function App() {
 
   useEffect(() => {
     const onHash = () => {
-      setRoute(readHash());
-      scrollTo(0, 0);
+      const next = readHash();
+      setRoute(next);
+      if (!next.health) scrollTo(0, 0);
     };
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
@@ -84,6 +87,8 @@ export function App() {
     };
   }, [menu]);
   const nav = useCallback((hash: string) => {
+    // Same hash fires no hashchange, so a second click on Agent Health reopens the panel directly.
+    if (hash === "#/overview/health" && location.hash === hash) showHealth();
     location.hash = hash;
   }, []);
 
@@ -183,7 +188,7 @@ export function App() {
         )}
         {route.view === "overview" && (
           <main className="page">
-            <Overview mission={mission.data} agents={list} onNav={nav} />
+            <Overview mission={mission.data} agents={list} health={route.health ?? false} onNav={nav} />
           </main>
         )}
         {(route.view === "cases" || route.view === "needs") && (

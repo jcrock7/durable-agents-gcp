@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ago, caseGroup, cents, GROUP_LABEL, plain, titleCase, usd, type Agent, type CaseGroup, type Mission } from "./api.js";
 import { nextStep } from "./CaseTable.js";
 
@@ -13,10 +14,23 @@ const DIST: Array<[CaseGroup, string]> = [
   ["closed", "c-can"],
 ];
 
+/** Opens the Agent Health panel and brings it into view. */
+export function showHealth() {
+  const el = document.getElementById("agent-health") as HTMLDetailsElement | null;
+  if (!el) return;
+  el.open = true;
+  // After layout, so the opened panel's height is counted.
+  requestAnimationFrame(() => el.closest("section")?.scrollIntoView({ block: "start" }));
+}
+
 /** The landing page (was the Mission Control overlay): decisions first, outcomes as one bar, then agents and platform. */
-export function Overview(props: { mission?: Mission; agents: Agent[]; onNav: (hash: string) => void }) {
+export function Overview(props: { mission?: Mission; agents: Agent[]; health?: boolean; onNav: (hash: string) => void }) {
   const { mission: m, agents } = props;
   const name = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
+  const loaded = Boolean(m);
+  useEffect(() => {
+    if (props.health && loaded) showHealth();
+  }, [props.health, loaded]);
   if (!m) return <div className="panel empty">Loading the overview…</div>;
 
   const waiting = m.runs.filter((r) => r.needsPerson);
@@ -216,7 +230,7 @@ export function Overview(props: { mission?: Mission; agents: Agent[]; onNav: (ha
             </h2>
             <span className={`tag ${down.length ? "warn" : "ok"}`}>{down.length ? `${down.length} Down` : "All Systems Healthy"}</span>
           </div>
-          <details style={{ padding: "12px 22px 16px" }}>
+          <details id="agent-health" style={{ padding: "12px 22px 16px" }}>
             <summary style={{ fontWeight: 600 }}>Platform and Connected Systems</summary>
             <dl className="kv" style={{ marginTop: 12 }}>
               {m.platform.map((p) => (

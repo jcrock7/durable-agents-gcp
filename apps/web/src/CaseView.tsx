@@ -1,4 +1,4 @@
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { cents, caseTag, plain, postJson, shortDate, sourceLabel, titleCase, usd, usePoll, type Agent, type AnyState, type CaseDetail, type Skill } from "./api.js";
 import { approveEffect, escalateEffect, sendBackEffect } from "./effects.js";
 import { Inspector } from "./Inspector.js";
@@ -31,11 +31,23 @@ function ReviewBar(props: {
   conflictHint?: string;
   onChanged: () => void;
 }) {
+  const [mode, setMode] = useState<"back" | "escalate" | null>(null);
   const [feedback, setFeedback] = useState(props.conflictHint ?? "");
   const [note, setNote] = useState("");
-  const [escalating, setEscalating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const dialog = useRef<HTMLDialogElement>(null);
+  // The native dialog gives the focus trap, Escape to close and the backdrop.
+  useEffect(() => {
+    const d = dialog.current;
+    if (mode && d && !d.open) {
+      d.showModal();
+      const t = d.querySelector("textarea");
+      t?.focus();
+      t?.setSelectionRange(t.value.length, t.value.length);
+    }
+    if (!mode && d?.open) d.close();
+  }, [mode]);
   const send = async (body: Record<string, unknown>) => {
     setBusy(true);
     setError(undefined);
@@ -43,7 +55,7 @@ function ReviewBar(props: {
       await postJson(`/api/cases/${props.workflowId}/review`, body);
       setFeedback("");
       setNote("");
-      setEscalating(false);
+      setMode(null);
       props.onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -51,55 +63,91 @@ function ReviewBar(props: {
       setBusy(false);
     }
   };
+  const back = mode === "back";
+  const text = back ? feedback : note;
+  const setText = back ? setFeedback : setNote;
+  const submit = () => {
+    if (!text.trim() || busy) return;
+    void send(back ? { approved: false, feedback } : { escalate: { note } });
+  };
   const approve = (
     <button type="button" className={`btn${props.conflictHint ? "" : " primary"}`} disabled={busy} onClick={() => void send({ approved: true })}>
       {props.approveLabel}
     </button>
   );
   const sendBack = (
-    <button type="button" className={`btn${props.conflictHint ? " primary" : ""}`} disabled={busy || !feedback.trim()} title={feedback.trim() ? "" : "Write feedback for the agent first"} onClick={() => void send({ approved: false, feedback })}>
-      Send Back to Agent
+    <button type="button" className={`btn${props.conflictHint ? " primary" : ""}`} disabled={busy} aria-haspopup="dialog" onClick={() => setMode("back")}>
+      Send Back to Agent…
     </button>
   );
   return (
     <div className="dbar">
       <div className="what">
-        <b>If you approve:</b> {props.ifApprove} <b>If you send back:</b> {props.ifSendBack}
-        {escalating && props.ifEscalate ? (
-          <>
-            {" "}
-            <b>If you escalate:</b> {props.ifEscalate}
-          </>
-        ) : null}
+        <b>If you approve:</b> {props.ifApprove}
       </div>
-      {!props.conflictHint && approve}
-      <label htmlFor="feedback" className="sr">
-        Feedback for the agent
-      </label>
-      <textarea id="feedback" className="feedback" rows={1} placeholder="Or tell the agent what to do instead, e.g. ask for a credit memo" value={feedback} onChange={(e) => setFeedback(e.target.value)} />
-      {sendBack}
-      {props.conflictHint && approve}
-      {props.ifEscalate && !escalating && (
-        <button type="button" className="btn" disabled={busy} onClick={() => setEscalating(true)}>
-          Escalate to AP Specialist
+      {props.conflictHint ? sendBack : approve}
+      {props.conflictHint ? approve : sendBack}
+      {props.ifEscalate && (
+        <button type="button" className="btn" disabled={busy} aria-haspopup="dialog" onClick={() => setMode("escalate")}>
+          Escalate to AP Specialist…
         </button>
       )}
       <span className="who">Recorded as {props.me}</span>
-      {escalating && (
-        <div className="esc">
-          <label htmlFor="esc-note" className="sr">
-            Note for the AP specialist
-          </label>
-          <input id="esc-note" type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the AP specialist, e.g. the buyer should confirm this price with the vendor" />
-          <button type="button" className="btn primary" disabled={busy || !note.trim()} onClick={() => void send({ escalate: { note } })}>
-            Confirm Escalation
-          </button>
-          <button type="button" className="btn" disabled={busy} onClick={() => setEscalating(false)}>
-            Cancel
-          </button>
-        </div>
-      )}
-      {error && <span style={{ flexBasis: "100%", color: "var(--warn)" }}>{error}</span>}
+      {error && !mode && <span style={{ flexBasis: "100%", color: "var(--warn)" }}>{error}</span>}
+
+      <dialog
+        ref={dialog}
+        className="modal"
+        aria-labelledby="decide-h"
+        onClose={() => setMode(null)}
+        onClick={(e) => {
+          if (e.target === dialog.current && !busy) setMode(null);
+        }}
+      >
+        {mode && (
+          <form
+            className="modal-body"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit();
+            }}
+          >
+            <header>
+              <h2 id="decide-h">{back ? "Send Back to Agent" : "Escalate to AP Specialist"}</h2>
+              <button type="button" className="icon-btn" aria-label="Close" disabled={busy} onClick={() => setMode(null)}>
+                ✕
+              </button>
+            </header>
+            <p className="modal-effect">
+              <b>What happens:</b> {back ? props.ifSendBack : props.ifEscalate}
+            </p>
+            <label htmlFor="decide-text" className="lab">
+              {back ? "Feedback for the Agent" : "Note for the AP Specialist"}
+            </label>
+            <textarea
+              id="decide-text"
+              rows={7}
+              value={text}
+              placeholder={back ? "Tell the agent what to do instead, e.g. ask the vendor for a credit memo" : "What the specialist should check, e.g. the buyer should confirm this price with the vendor"}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit();
+              }}
+            />
+            {back && props.conflictHint && feedback === props.conflictHint && <span className="muted">Suggested from the policy conflict. Edit it as you need.</span>}
+            {error && <span className="modal-error" role="alert">{error}</span>}
+            <footer>
+              <span className="who">Recorded as {props.me} · Ctrl+Enter to confirm</span>
+              <button type="button" className="btn" disabled={busy} onClick={() => setMode(null)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn primary" disabled={busy || !text.trim()}>
+                {busy ? "Sending…" : back ? "Send Back to Agent" : "Confirm Escalation"}
+              </button>
+            </footer>
+          </form>
+        )}
+      </dialog>
     </div>
   );
 }

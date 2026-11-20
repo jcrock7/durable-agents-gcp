@@ -93,7 +93,7 @@ export function Sidebar(props: {
       )}
       {(roadmap || planned.some((a) => view === "agent" && a.id === selected)) && planned.map(agentRow)}
 
-      <button type="button" className="side-foot" title={healthTitle || "Agent Health"} onClick={() => props.onNav("#/overview")}>
+      <button type="button" className="side-foot" title={healthTitle || "Agent Health"} onClick={() => props.onNav("#/overview/health")}>
         <span className="health-dot" style={{ background: !props.platform ? "#9CA3AF" : down.length ? "#F97316" : "#22C55E" }} />
         {!collapsed && <span className={text}>Agent Health{down.length ? ` · ${down.length} down` : ""}</span>}
       </button>

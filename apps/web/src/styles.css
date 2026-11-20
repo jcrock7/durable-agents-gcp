@@ -176,7 +176,7 @@ details > summary { cursor: pointer; }
 .ev .h b { font-weight: 600; font-size: 15px; } .ev .src { font-size: 13px; color: var(--text-3); }
 .ev details { font-size: 13px; color: var(--text-3); }
 pre.detail { margin: 6px 0 0; padding: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; color: var(--text); max-height: 280px; overflow: auto; }
-.kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; }
+.kv { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 6px 16px; }
 .kv dt { color: var(--text-2); } .kv dd { font-weight: 500; text-align: right; overflow-wrap: anywhere; }
 .meter { position: relative; height: 10px; border-radius: 5px; background: var(--track); margin: 24px 0 22px; }
 .meter i { position: absolute; inset: 0 auto 0 0; border-radius: 5px; background: var(--warn-fill); }
@@ -220,7 +220,7 @@ pre.detail { margin: 6px 0 0; padding: 10px; font-family: 'IBM Plex Mono', monos
 .nm b { display: block; font-weight: 600; } .nm span { font-size: 14px; color: var(--text-2); }
 .road { display: flex; flex-wrap: wrap; gap: 8px; }
 .road button { border: 1px dashed var(--border-strong); border-radius: 4px; padding: 4px 12px; font-size: 14px; color: var(--text-2); background: none; }
-.ov-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; align-items: start; }
+.ov-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; align-items: stretch; }
 .event { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; padding: 12px 22px; border-bottom: 1px solid var(--border); }
 .event:last-child { border-bottom: 0; }
 
@@ -300,3 +300,28 @@ button.user-chip { background: var(--surface); }
   table.stacked td.num::before { content: attr(data-label) " "; }
   .menu { position: fixed; left: 16px; right: 16px; top: 60px; width: auto; }
 }
+
+/* Decision dialog: comments for Send Back and Escalate are written here, not in the bar. */
+.modal { inset: 0; margin: auto; width: min(640px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--border-strong); border-radius: 10px; background: var(--surface); color: var(--text); box-shadow: 0 24px 64px rgba(0, 0, 0, 0.3); }
+.modal::backdrop { background: rgba(10, 16, 24, 0.55); }
+.modal-body { display: flex; flex-direction: column; gap: 12px; padding: 22px 24px; }
+.modal-body header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.modal-body h2 { margin: 0; font-size: 20px; font-weight: 650; }
+.modal-body header .icon-btn { color: var(--text-2); border-color: var(--border-strong); }
+.modal-effect { margin: 0; font-size: 14.5px; line-height: 1.5; color: var(--text-2); }
+.modal-effect b { color: var(--text); font-weight: 600; }
+.modal-body textarea { width: 100%; min-height: 160px; padding: 12px 14px; font: inherit; font-size: 16px; line-height: 1.5; color: var(--text); background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px; resize: vertical; }
+.modal-body textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.modal-body .muted { font-size: 13.5px; }
+.modal-error { color: var(--warn); font-size: 14.5px; }
+.modal-body footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 4px; }
+.modal-body footer .who { margin-right: auto; font-size: 13.5px; color: var(--text-3); }
+@media (max-width: 640px) {
+  .modal { width: 100vw; max-width: 100vw; margin: auto 0 0; border-radius: 14px 14px 0 0; border-width: 1px 0 0; }
+  .modal-body footer .btn { flex: 1 1 100%; } .modal-body footer .who { flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .modal[open] { animation: modal-in 0.16s ease-out; }
+  @keyframes modal-in { from { opacity: 0; transform: translateY(8px); } }
+}
+#ov-health { scroll-margin-top: 0; } .ov-cols > section { scroll-margin-top: 76px; }

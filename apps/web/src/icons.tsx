@@ -21,6 +21,16 @@ export const Radar = ({ size = 20 }: { size?: number }) => (
     <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
   </svg>
 );
+export const Flag = () => (
+  <svg {...base}>
+    <path d="M5 21V4h11l-2 4 2 4H5" />
+  </svg>
+);
+export const List = () => (
+  <svg {...base}>
+    <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
+  </svg>
+);
 export const Close = () => (
   <svg {...base}>
     <path d="M6 6l12 12M18 6L6 18" />

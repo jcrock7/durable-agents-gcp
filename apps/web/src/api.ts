@@ -115,34 +115,99 @@ export function ago(iso: string | null | undefined): string {
   return `${Math.floor(s / 86400)}d`;
 }
 
-/** Status tag class and label for a case. */
-export function caseTag(c: Pick<CaseSummary, "stage" | "status" | "needsPerson" | "temporalStatus">): [string, string] {
-  if (c.needsPerson) return ["warn", "Needs you"];
+const SMALL = new Set(["a", "an", "and", "as", "at", "by", "for", "in", "of", "on", "or", "the", "to", "with"]);
+const UPPER = new Set(["erp", "pdf", "po", "uom", "ap", "id", "mcp", "cve"]);
+
+/** Title case for short labels: "accept_variance" -> "Accept Variance", "read invoice PDF" -> "Read Invoice PDF". */
+export function titleCase(s: string | null | undefined): string {
+  return (s ?? "")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .map((w, i) => {
+      const l = w.toLowerCase();
+      if (UPPER.has(l)) return l.toUpperCase();
+      if (i > 0 && SMALL.has(l)) return l;
+      return w === w.toUpperCase() && w.length > 1 && /[A-Z]/.test(w) ? w : l.charAt(0).toUpperCase() + l.slice(1);
+    })
+    .join(" ");
+}
+
+const money = (n: string) => `$${Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** Plain language for workflow text: snake_case and SHOUT_CASE become words, bare amounts get a currency sign. */
+export function plain(text: string | null | undefined): string {
+  return (text ?? "")
+    .replace(/amount (\d+(?:\.\d+)?) is over the (\d+(?:\.\d+)?) approval line/g, (_, a: string, b: string) => `${money(a)} is over the ${money(b)} approval line`)
+    .replace(/\b[A-Za-z]+(?:_[A-Za-z]+)+\b/g, (m) => m.replace(/_/g, " ").toLowerCase())
+    .replace(/^([a-z])/, (m) => m.toUpperCase());
+}
+
+const SERVER: Record<string, string> = { "erp-read": "ERP", "erp-write": "ERP", docs: "Documents", "match-engine": "Match Engine" };
+
+/** "erp-read:get_contract_prices" -> "ERP · Contract Prices". */
+export function sourceLabel(ref: string | null | undefined): string {
+  const [server = "", tool = ""] = (ref ?? "").split(":");
+  const t = titleCase(tool.replace(/^(get|search|read|run|list|post)_/, ""));
+  return [SERVER[server] ?? titleCase(server), t].filter(Boolean).join(" · ");
+}
+
+export type CaseGroup = "needs" | "waiting" | "hold" | "escalated" | "running" | "resolved" | "cancelled" | "closed";
+export const GROUP_LABEL: Record<CaseGroup, string> = {
+  needs: "Needs Decision",
+  waiting: "Waiting",
+  hold: "On Hold",
+  escalated: "Escalated",
+  running: "Running",
+  resolved: "Resolved",
+  cancelled: "Cancelled",
+  closed: "Closed",
+};
+/** Groups a person still has to watch. */
+export const OPEN_GROUPS: CaseGroup[] = ["needs", "waiting", "hold", "escalated", "running"];
+
+/** Where a case stands, as one of a small set of groups used by tags, tabs and the outcome bar. */
+export function caseGroup(c: Pick<CaseSummary, "stage" | "status" | "needsPerson" | "temporalStatus">): CaseGroup {
+  if (c.needsPerson) return "needs";
   const s = c.status ?? c.stage;
   switch (s) {
     case "resolved":
     case "done":
     case "approved":
     case "auto_approved":
-      return ["ok", s === "resolved" ? "Resolved" : "Done"];
+      return "resolved";
     case "on_hold":
-      return ["info", "On hold"];
+      return "hold";
     case "waiting":
-      return ["info", "Waiting"];
+      return "waiting";
     case "escalated":
-      return ["warn", "Escalated"];
     case "blocked":
-      return ["warn", "Blocked"];
-    case "expired":
-    case "rejected_by_reviewer":
-    case "rejected":
-      return ["idle", s.replace(/_/g, " ")];
+      return "escalated";
     case "terminated":
     case "canceled":
     case "failed":
     case "timed_out":
-      return ["idle", s.replace(/_/g, " ")];
+      return "cancelled";
+    case "expired":
+    case "rejected_by_reviewer":
+    case "rejected":
+      return "closed";
     default:
-      return ["ok", "Running"];
+      return "running";
   }
 }
+
+const GROUP_TAG: Record<CaseGroup, string> = { needs: "warn", waiting: "info", hold: "idle", escalated: "crit", running: "info", resolved: "ok", cancelled: "idle", closed: "idle" };
+
+/** Status tag class and label for a case. One name per state, in title case. */
+export function caseTag(c: Pick<CaseSummary, "stage" | "status" | "needsPerson" | "temporalStatus">): [string, string] {
+  const g = caseGroup(c);
+  const s = c.status ?? c.stage;
+  const label = g === "resolved" && s !== "resolved" ? "Done" : g === "escalated" && s === "blocked" ? "Blocked" : g === "cancelled" && s !== "terminated" && s !== "canceled" ? titleCase(s) : g === "closed" ? titleCase(s) : GROUP_LABEL[g];
+  return [GROUP_TAG[g], label];
+}
+
+export const shortDate = (iso: string | null | undefined) => {
+  const t = iso ? Date.parse(iso) : NaN;
+  return Number.isNaN(t) ? (iso ?? "–") : new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+};

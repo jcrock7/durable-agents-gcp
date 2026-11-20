@@ -1,19 +1,18 @@
 import { useState } from "react";
 import { usd, type AnyState } from "./api.js";
 
-type Tab = "timeline" | "calls" | "skills" | "cost" | "guardrails";
+type Tab = "calls" | "skills" | "cost" | "guardrails";
 
-/** Timeline, tool calls, skills, cost and guardrails for one case (ADR-0021). */
+/** The audit trail for one case: tool calls, skills, cost and guardrails (ADR-0021). The step strip on the case page replaces the old timeline tab. */
 export function Inspector({ state }: { state: AnyState }) {
-  const [tab, setTab] = useState<Tab>("timeline");
+  const [tab, setTab] = useState<Tab>("calls");
   const [call, setCall] = useState(0);
   const calls: AnyState[] = state.toolCalls ?? [];
   const usage: AnyState[] = state.usage ?? [];
   const skills = Object.entries((state.skillVersions ?? {}) as Record<string, string>);
   const guards = guardrails(state);
   const tabs: Array<[Tab, string]> = [
-    ["timeline", "Timeline"],
-    ["calls", `Tool calls ${calls.length}`],
+    ["calls", `Tool Calls ${calls.length}`],
     ["skills", `Skills ${skills.length}`],
     ["cost", "Cost"],
     ["guardrails", "Guardrails"],
@@ -21,42 +20,15 @@ export function Inspector({ state }: { state: AnyState }) {
   const selected = calls[call];
 
   return (
-    <aside className="panel inspector" aria-labelledby="ins-h">
-      <h2 id="ins-h" className="panel-title" style={{ padding: "10px 14px 0" }}>
-        Inspector
-      </h2>
-      <div role="tablist" aria-label="Inspector" style={{ display: "flex", flexWrap: "wrap", padding: "0 6px", borderBottom: "1px solid var(--border)" }}>
+    <div className="content">
+      <div role="tablist" aria-label="Inspector" className="tabs" style={{ marginBottom: 14 }}>
         {tabs.map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} className={`tab tab-small${tab === id ? " on" : ""}`} onClick={() => setTab(id)}>
+          <button key={id} type="button" role="tab" aria-selected={tab === id} className={`tab${tab === id ? " on" : ""}`} onClick={() => setTab(id)}>
             {label}
           </button>
         ))}
       </div>
-      <div className="content">
-        {tab === "timeline" && (
-          <>
-            <p className="muted" style={{ margin: "0 0 12px", fontSize: 12 }}>
-              From the Temporal history of this run.
-            </p>
-            <ol className="timeline">
-              {(state.timeline ?? []).map((t: AnyState, i: number) => (
-                <li key={i}>
-                  <div className="rail">
-                    <span className={`tdot${t.state === "now" ? " now" : ""}`} />
-                    <span className="tline" />
-                  </div>
-                  <div className="tbody">
-                    <div className="tn">{t.name}</div>
-                    <div className="td">
-                      {new Date(t.at).toLocaleString()} {t.detail ? `· ${t.detail}` : ""}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </>
-        )}
-
+      <div>
         {tab === "calls" &&
           (calls.length === 0 ? (
             <p className="muted">No tool calls yet.</p>
@@ -65,16 +37,16 @@ export function Inspector({ state }: { state: AnyState }) {
               <div style={{ border: "1px solid var(--border)", borderRadius: 4, maxHeight: 320, overflow: "auto" }}>
                 {calls.map((c, i) => (
                   <button key={i} type="button" className={`call${i === call ? " on" : ""}`} onClick={() => setCall(i)}>
-                    <span className="mono" style={{ fontSize: 12, flex: "1 1 auto", minWidth: 0, overflowWrap: "anywhere" }}>
+                    <span className="mono" style={{ fontSize: 13, flex: "1 1 auto", minWidth: 0, overflowWrap: "anywhere" }}>
                       {c.ref}
                     </span>
-                    <span className="muted" style={{ fontSize: 11 }}>
+                    <span className="muted" style={{ fontSize: 13 }}>
                       {c.caller}
                     </span>
-                    <span className={`tag ${c.outcome === "ok" ? "ok" : c.outcome === "refused" ? "warn" : "idle"}`} style={{ fontSize: 11 }}>
+                    <span className={`tag ${c.outcome === "ok" ? "ok" : c.outcome === "refused" ? "warn" : "idle"}`} style={{ fontSize: 13 }}>
                       {c.outcome}
                     </span>
-                    <span className="muted mono" style={{ fontSize: 11 }}>
+                    <span className="muted mono" style={{ fontSize: 13 }}>
                       {c.durationMs} ms
                     </span>
                   </button>
@@ -83,10 +55,10 @@ export function Inspector({ state }: { state: AnyState }) {
               {selected && (
                 <div style={{ border: "1px solid var(--border)", borderRadius: 4, overflow: "hidden" }}>
                   <div className="panel-head" style={{ background: "var(--surface-2)" }}>
-                    <span className="mono" style={{ fontSize: 12 }}>
+                    <span className="mono" style={{ fontSize: 13 }}>
                       {selected.ref}
                     </span>
-                    <span className="muted" style={{ fontSize: 12 }}>
+                    <span className="muted" style={{ fontSize: 13 }}>
                       called by {selected.caller}
                     </span>
                   </div>
@@ -97,7 +69,7 @@ export function Inspector({ state }: { state: AnyState }) {
                   </pre>
                 </div>
               )}
-              <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+              <p className="muted" style={{ margin: 0, fontSize: 13 }}>
                 Arguments are recorded for every call; results are kept as sizes only.
               </p>
             </div>
@@ -107,15 +79,15 @@ export function Inspector({ state }: { state: AnyState }) {
           <div>
             {skills.map(([name, version]) => (
               <div key={name} className="row-line">
-                <span className="mono" style={{ fontSize: 12 }}>
+                <span className="mono" style={{ fontSize: 13 }}>
                   {name}
                 </span>
-                <span className="mono muted" style={{ fontSize: 12 }}>
+                <span className="mono muted" style={{ fontSize: 13 }}>
                   v{version}
                 </span>
               </div>
             ))}
-            <p className="muted" style={{ margin: "10px 0 0", fontSize: 12 }}>
+            <p className="muted" style={{ margin: "10px 0 0", fontSize: 13 }}>
               Recorded on the run, so a later edit to a skill never changes how this case reads.
             </p>
           </div>
@@ -126,10 +98,10 @@ export function Inspector({ state }: { state: AnyState }) {
             {usage.map((u, i) => (
               <div key={i} className="row-line">
                 <span>{u.step}</span>
-                <span className="mono muted" style={{ fontSize: 12 }}>
+                <span className="mono muted" style={{ fontSize: 13 }}>
                   {u.model} · {(u.inputTokens ?? 0).toLocaleString()} in / {(u.outputTokens ?? 0).toLocaleString()} out
                 </span>
-                <span className="mono" style={{ fontSize: 12 }}>
+                <span className="mono" style={{ fontSize: 13 }}>
                   {usd(u.costUsd, 4)}
                 </span>
               </div>
@@ -138,7 +110,7 @@ export function Inspector({ state }: { state: AnyState }) {
               <span>This case</span>
               <span className="mono">{usd(usage.reduce((s, u) => s + (u.costUsd ?? 0), 0), 4)}</span>
             </div>
-            <p className="muted" style={{ margin: "6px 0 0", fontSize: 12 }}>
+            <p className="muted" style={{ margin: "6px 0 0", fontSize: 13 }}>
               As reported by the LiteLLM gateway, billed to this agent's own key.
             </p>
           </div>
@@ -159,7 +131,7 @@ export function Inspector({ state }: { state: AnyState }) {
           </div>
         )}
       </div>
-    </aside>
+    </div>
   );
 }
 

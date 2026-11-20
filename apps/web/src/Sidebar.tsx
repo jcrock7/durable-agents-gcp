@@ -1,93 +1,102 @@
+import { useState } from "react";
 import type { Agent, Mission } from "./api.js";
-import { Chevrons, Logo, Radar } from "./icons.js";
+import { Chevrons, Flag, List, Logo, Radar } from "./icons.js";
 
-const DOT: Record<Agent["status"], string> = { active: "#22C55E", needs_review: "#F97316", idle: "#9CA3AF", coming_soon: "#4B5563" };
+const DOT: Record<Agent["status"], string> = { active: "#22C55E", needs_review: "#E39A1B", idle: "#9CA3AF", coming_soon: "#4B5563" };
 
+export type View = "overview" | "needs" | "cases" | "agent";
+
+const monogram = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+/** Primary navigation: overview, the decision queue, all cases, then the agents. */
 export function Sidebar(props: {
   agents: Agent[];
+  view: View;
   selected: string;
   collapsed: boolean;
   needPerson: number;
   platform?: Mission["platform"];
   onToggle: () => void;
-  onSelect: (id: string) => void;
-  onMission: () => void;
+  onNav: (hash: string) => void;
 }) {
-  const { agents, selected, collapsed } = props;
-  const healthy = props.platform?.every((p) => p.ok !== false);
+  const { agents, view, selected, collapsed } = props;
+  const [roadmap, setRoadmap] = useState(false);
+  const live = agents.filter((a) => a.built);
+  const planned = agents.filter((a) => !a.built);
+  const down = (props.platform ?? []).filter((p) => p.ok === false);
+  const healthTitle = (props.platform ?? []).map((p) => `${p.name}: ${p.ok === null ? "unknown" : p.ok ? "healthy" : "down"}`).join("\n");
+  const text = collapsed ? "" : "hide-narrow";
+
+  const agentRow = (a: Agent) => (
+    <button
+      key={a.id}
+      type="button"
+      className={`nav-item${view === "agent" && a.id === selected ? " current" : ""}${a.built ? "" : " soon"}`}
+      aria-current={view === "agent" && a.id === selected ? "page" : undefined}
+      aria-label={`${a.name}, ${a.built ? a.purpose : "on the roadmap"}${a.needsPerson ? `, ${a.needsPerson} need a decision` : ""}`}
+      title={`${a.name} · ${a.built ? a.purpose : "On the roadmap"}`}
+      onClick={() => props.onNav(`#/agent/${a.id}`)}
+    >
+      <span className="monogram" aria-hidden="true">
+        {monogram(a.name)}
+        <span className="dot" style={{ background: DOT[a.status] }} />
+      </span>
+      {!collapsed && <span className={`grow ${text}`}>{a.name}</span>}
+      {!collapsed && a.needsPerson > 0 && <span className={`nav-count ${text}`}>{a.needsPerson}</span>}
+    </button>
+  );
+
   return (
-    <nav aria-label="Agents" className={`sidebar${collapsed ? " collapsed" : ""}`}>
+    <nav aria-label="Primary" className={`sidebar${collapsed ? " collapsed" : ""}`}>
       <div className="side-top">
         {!collapsed && (
-          <div className="brand">
+          <div className={`brand ${text}`}>
             <Logo />
             Agent Operations
           </div>
         )}
-        <button type="button" className="icon-btn" onClick={props.onToggle} aria-label={collapsed ? "Expand agent list" : "Collapse agent list"} title={collapsed ? "Expand agent list" : "Collapse agent list"}>
+        <button type="button" className="icon-btn" onClick={props.onToggle} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} title={collapsed ? "Expand navigation" : "Collapse navigation"}>
           <Chevrons flip={collapsed} />
         </button>
       </div>
 
-      <button type="button" className="command-btn" onClick={props.onMission} aria-label="Open Mission Control" title="Mission Control">
-        <Radar />
-        {!collapsed && (
-          <>
-            <span style={{ flex: "1 1 auto", textAlign: "left" }}>Mission Control</span>
-            {props.needPerson > 0 && <span className="command-badge">{props.needPerson} need you</span>}
-          </>
-        )}
+      <button type="button" className={`nav-item${view === "overview" ? " current" : ""}`} aria-current={view === "overview" ? "page" : undefined} title="Overview" onClick={() => props.onNav("#/overview")}>
+        <Radar size={18} />
+        {!collapsed && <span className={`grow ${text}`}>Overview</span>}
+      </button>
+      <button type="button" className={`nav-item${view === "needs" ? " current" : ""}`} aria-current={view === "needs" ? "page" : undefined} title="Needs Decision" onClick={() => props.onNav("#/cases/needs")}>
+        <Flag />
+        {!collapsed && <span className={`grow ${text}`}>Needs Decision</span>}
+        {!collapsed && props.needPerson > 0 && <span className={`nav-count ${text}`}>{props.needPerson}</span>}
+      </button>
+      <button type="button" className={`nav-item${view === "cases" ? " current" : ""}`} aria-current={view === "cases" ? "page" : undefined} title="All Cases" onClick={() => props.onNav("#/cases")}>
+        <List />
+        {!collapsed && <span className={`grow ${text}`}>All Cases</span>}
       </button>
 
-      {!collapsed && (
-        <div className="side-label">
-          <span>Agents</span>
-          <span>{agents.length}</span>
-        </div>
-      )}
-      <div className="agent-list">
-        {agents.map((a) => {
-          const soon = a.status === "coming_soon";
-          return (
-            <button
-              key={a.id}
-              type="button"
-              className={`agent-row${a.id === selected ? " current" : ""}${soon ? " soon" : ""}`}
-              aria-current={a.id === selected ? "page" : undefined}
-              aria-label={`${a.name}, ${soon ? "coming soon" : a.purpose}${a.needsPerson ? `, ${a.needsPerson} need you` : ""}`}
-              title={`${a.name} · ${soon ? "Coming soon" : a.purpose}`}
-              onClick={() => props.onSelect(a.id)}
-            >
-              <span className="avatar-wrap">
-                <img src={`/avatars/${a.avatar}`} alt="" />
-                <span className="dot" style={{ background: DOT[a.status] }} />
-                {a.needsPerson > 0 && <span className="badge">{a.needsPerson}</span>}
-              </span>
-              {!collapsed && (
-                <span className="agent-text">
-                  <span className="n">{a.name}</span>
-                  <span className="p">{soon ? "Coming soon" : a.purpose}</span>
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {!collapsed && <div className={`side-label ${text}`}>Agents</div>}
+      {live.map(agentRow)}
 
-      <div className="side-foot">
-        {collapsed ? (
-          <div title={healthy ? "Platform healthy" : "Platform degraded"} style={{ display: "flex", justifyContent: "center" }}>
-            <span className="health-dot" style={{ width: 10, height: 10, background: healthy ? "#22C55E" : "#F97316" }} />
-          </div>
-        ) : (
-          (props.platform ?? []).map((p) => (
-            <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span className="health-dot" style={{ background: p.ok === null ? "#9CA3AF" : p.ok ? "#22C55E" : "#F97316" }} />
-              {p.name} {p.ok === null ? "unknown" : p.ok ? "healthy" : "down"}
-            </div>
-          ))
-        )}
-      </div>
+      {planned.length > 0 && !collapsed && (
+        <button type="button" className={`side-label ${text}`} aria-expanded={roadmap} onClick={() => setRoadmap(!roadmap)}>
+          <span>Roadmap</span>
+          <span>
+            {planned.length} {roadmap ? "–" : "+"}
+          </span>
+        </button>
+      )}
+      {(roadmap || planned.some((a) => view === "agent" && a.id === selected)) && planned.map(agentRow)}
+
+      <button type="button" className="side-foot" title={healthTitle || "Agent Health"} onClick={() => props.onNav("#/overview")}>
+        <span className="health-dot" style={{ background: !props.platform ? "#9CA3AF" : down.length ? "#F97316" : "#22C55E" }} />
+        {!collapsed && <span className={text}>Agent Health{down.length ? ` · ${down.length} down` : ""}</span>}
+      </button>
     </nav>
   );
 }

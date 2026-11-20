@@ -13,6 +13,8 @@ How this Windows 11 laptop's dev environment is configured: VS Code, PowerShell,
 | gcloud | 594.0.0 (user installer, `%LOCALAPPDATA%\Google\Cloud SDK`) | 594.0.0 (`google-cloud-cli` apt package) |
 | GKE auth plugin | gcloud component | apt package |
 | Node.js | v26 (`C:\Program Files\nodejs`) | v26.13.1 LTS via fnm 1.39.0 |
+| pnpm | 10.28.0 (npm global) | 12.21.0 (npm global under fnm's Node) |
+| Terraform | — | 1.17.2 (`~/.local/bin`) |
 | Cluster | k3d `gke-prep-cluster` at `127.0.0.1:6550` | k3d `gke-prep-cluster` at `0.0.0.0:6550` |
 
 ---
@@ -408,9 +410,55 @@ fnm default 24           # change the default
 echo 24 > .node-version  # pin a project; terminals switch on cd
 ```
 
-- `pnpm` still resolves to the Windows copy (`/mnt/c/Users/Admin/AppData/Roaming/npm/pnpm`). For a Linux one, run `npm install -g pnpm` in WSL.
+### pnpm
 
-## 11. WSL: Herdr
+Installed as a global npm package with WSL's own Node, so it comes ahead of the Windows copy (`/mnt/c/Users/Admin/AppData/Roaming/npm/pnpm`) in every shell:
+
+```bash
+npm install -g pnpm
+pnpm --version   # 12.21.0
+```
+
+- Global npm packages live inside each fnm Node version. After `fnm install` of a new version, rerun `npm install -g pnpm` for it.
+- Projects that pin `"packageManager": "pnpm@x.y.z"` in `package.json` (this repo pins `pnpm@12.17.0`) are handled automatically: WSL pnpm downloads and switches to the pinned version (`pnpm --version` in the repo prints `12.17.0`).
+- Windows pnpm 10.28.0 currently **fails** in this repo with `Failed to switch pnpm to v12.17.0 … CLI is missing at "%LOCALAPPDATA%\pnpm\.tools\pnpm\12.17.0\bin"` (its cache of the pinned version is incomplete).
+
+## 11. WSL: Terraform
+
+HashiCorp's apt repository needs sudo, so Terraform is installed from the official release zip into `~/.local/bin`. The checksum file's GPG signature and the zip's SHA-256 are both verified first:
+
+```bash
+V=1.17.2   # latest: curl -fsS https://checkpoint-api.hashicorp.com/v1/check/terraform
+B=https://releases.hashicorp.com/terraform/$V
+t=$(mktemp -d) && cd "$t"
+curl -fsSLO "$B/terraform_${V}_linux_amd64.zip"
+curl -fsSLO "$B/terraform_${V}_SHA256SUMS"
+curl -fsSLO "$B/terraform_${V}_SHA256SUMS.sig"
+curl -fsSL https://www.hashicorp.com/.well-known/pgp-key.txt -o hashicorp.asc
+
+export GNUPGHOME="$t/gnupg" && mkdir -m 700 "$GNUPGHOME"
+gpg -q --import hashicorp.asc
+gpg --verify "terraform_${V}_SHA256SUMS.sig" "terraform_${V}_SHA256SUMS"   # expect "Good signature"
+grep linux_amd64.zip "terraform_${V}_SHA256SUMS" | sha256sum -c -           # expect "OK"
+
+python3 -I -m zipfile -e "terraform_${V}_linux_amd64.zip" x
+install -m 755 x/terraform ~/.local/bin/terraform
+cd ~ && rm -rf "$t" && unset GNUPGHOME
+terraform version
+```
+
+- HashiCorp's release key fingerprint is `C874 011F 0AB4 0511 0D02 1055 3436 5D94 72D7 468F`. A temporary `GNUPGHOME` keeps the key out of your personal keyring.
+- Tab completion, added to `~/.bash_aliases`:
+
+  ```bash
+  # Terraform tab completion
+  complete -C "$HOME/.local/bin/terraform" terraform
+  ```
+
+- To upgrade, rerun the block with a new `V`.
+- Windows doesn't have Terraform installed.
+
+## 12. WSL: Herdr
 
 [Herdr](https://herdr.dev/docs/install/) is a terminal app for running AI coding agents. Its official installer puts the binary in `~/.local/bin` and checks the download's checksum. It doesn't use sudo or edit shell files.
 

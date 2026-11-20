@@ -179,6 +179,21 @@ describe("resolveInvoiceException: routes", () => {
     // The credit memo request went out only after the reviewer's decision, then the invoice was held.
     expect(acts.queueMessage).toHaveBeenCalledTimes(1);
     expect(acts.postResolution).toHaveBeenCalledWith(expect.objectContaining({ invoiceStatus: "on_hold" }));
+    // A held case says what it is waiting for and what releases it.
+    expect(result.reasons).toEqual(["waiting for a credit memo from the vendor; released when the credit is recorded"]);
+  });
+
+  it("hands the case to a person when the reviewer escalates, without posting", async () => {
+    const acts = mockActivities();
+    const result = await run(acts, async (handle) => {
+      await awaitingReview(handle, 1);
+      await expect(submitReview(handle, { approved: false, escalate: { note: " " }, reviewer: "ap.lead" })).rejects.toThrow();
+      await submitReview(handle, { approved: false, escalate: { note: "Buyer should confirm the price" }, reviewer: "ap.lead" });
+    });
+    expect(result).toMatchObject({ status: "escalated", reviewer: "ap.lead", humanTouches: 1 });
+    expect(result.reasons).toEqual(["Buyer should confirm the price", "escalated by ap.lead"]);
+    expect(acts.postResolution).not.toHaveBeenCalled();
+    expect(acts.setHold).toHaveBeenCalledTimes(1);
   });
 
   it("ends as rejected_by_reviewer after too many send-backs", async () => {

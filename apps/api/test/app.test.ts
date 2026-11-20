@@ -1,5 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { buildApp } from "../dist/app.js";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { buildApp, factsOf, parseSkill } from "../dist/app.js";
 import type { KubernetesSource, LiteLLMSource, RunInfo, TemporalSource } from "../dist/sources.js";
 
 const now = new Date().toISOString();
@@ -14,8 +17,15 @@ const states: Record<string, unknown> = {
     invoiceId: "INV-20931",
     stage: "awaiting_review",
     proposal: { exceptionType: "price_variance", action: "accept_variance" },
+    adjustment: { amountCents: 128_400 },
+    facts: { vendorId: "V-1", vendorName: "Saltmarsh Lab Supply", dueDate: "2026-12-02", lines: [{ lineNo: 1, itemId: "ITM-1181", quantity: 170 }] },
+    match: { totals: { invoiceCents: 981_330 } },
     route: { needsPerson: true, path: "post", reasons: ["accept_variance always needs a person", "amount 1284.00 is over the 1000.00 approval line"] },
-    timeline: [{ name: "Waiting for approval", detail: "", at: now }],
+    timeline: [
+      { name: "Match", detail: "", at: "2026-11-20T00:00:00.000Z" },
+      { name: "Propose resolution", detail: "", at: "2026-11-20T00:00:12.000Z" },
+      { name: "Waiting for approval", detail: "", at: now },
+    ],
     usage: [{ costUsd: 0.004 }, { costUsd: 0.001 }],
     toolCalls: [{ ref: "erp-write:post_resolution", caller: "model", outcome: "refused", at: now }],
   },
@@ -30,6 +40,7 @@ const temporal: TemporalSource = {
   signal: vi.fn(async () => undefined),
   start: vi.fn(async () => undefined),
   healthy: vi.fn(async () => true),
+  termination: vi.fn(async () => ({ reason: "superseded by a re-run", identity: "ops@example.com" })),
 };
 const litellm: LiteLLMSource = {
   keys: vi.fn(async () => [{ alias: "agent-invoice-exception-resolver", spend: 2.85, maxBudget: 3, resetsAt: null }]),
@@ -40,7 +51,22 @@ const kubernetes: KubernetesSource = {
   postgresReady: vi.fn(async () => true),
 };
 
-const app = buildApp({ temporal, litellm, kubernetes });
+const SKILL = `---
+name: ap-resolution-policy
+description: test
+version: "1.3"
+---
+
+| Action | Use when | Effect |
+|---|---|---|
+| \`accept_variance\` | The invoiced price is the contract price | Pay as invoiced. Always needs a person |
+| \`escalate\` | The evidence **does not** settle the case | Hold and hand to an AP specialist |
+`;
+const skillsDir = mkdtempSync(join(tmpdir(), "skills-"));
+mkdirSync(join(skillsDir, "invoice-exception-resolver", "ap-resolution-policy"), { recursive: true });
+writeFileSync(join(skillsDir, "invoice-exception-resolver", "ap-resolution-policy", "SKILL.md"), SKILL);
+
+const app = buildApp({ temporal, litellm, kubernetes, skillsDir });
 beforeAll(async () => app.ready());
 afterAll(async () => app.close());
 
@@ -78,6 +104,68 @@ describe("portal API", () => {
     const refused = await app.inject({ method: "POST", url: "/api/cases/inv-20931/review", payload: { approved: true } });
     expect(refused.statusCode).toBe(409);
     expect(refused.json().error).toBe("not waiting for review");
+  });
+
+  it("escalates with a note, as neither an approval nor a send-back", async () => {
+    vi.mocked(temporal.update).mockClear();
+    const res = await app.inject({ method: "POST", url: "/api/cases/inv-20931/review", payload: { escalate: { note: "Buyer should confirm the price" } } });
+    expect(res.statusCode).toBe(200);
+    expect(temporal.update).toHaveBeenCalledWith("inv-20931", "review", { approved: false, escalate: { note: "Buyer should confirm the price" }, reviewer: "local-user" });
+    expect((await app.inject({ method: "POST", url: "/api/cases/inv-20931/review", payload: { escalate: { note: " " } } })).statusCode).toBe(400);
+  });
+
+  it("gives every case its reason, amount and vendor", async () => {
+    const cases = (await app.inject("/api/agents/invoice-exception-resolver/cases")).json();
+    expect(cases[0]).toMatchObject({ amountCents: 128_400, vendorName: "Saltmarsh Lab Supply", reason: "accept_variance always needs a person; amount 1284.00 is over the 1000.00 approval line" });
+    expect(cases[1]).toMatchObject({ reason: "instructions in the invoice" });
+  });
+
+  it("says who cancelled a run and why", async () => {
+    vi.mocked(temporal.listRuns).mockResolvedValueOnce([{ workflowId: "inv-20931", runId: "r9", type: "resolveInvoiceException", status: "TERMINATED", startTime: now, closeTime: now }]);
+    const res = (await app.inject("/api/cases/inv-20931")).json();
+    expect(res.summary.reason).toBe("Cancelled by ops@example.com: superseded by a re-run");
+  });
+
+  it("returns the facts the workflow recorded, and derives them for runs from before it did", async () => {
+    expect((await app.inject("/api/cases/inv-20931")).json().facts).toMatchObject({ source: "erp", vendorName: "Saltmarsh Lab Supply", dueDate: "2026-12-02" });
+    const old = factsOf({
+      evidence: [{ source: "docs:read_pdf_text", excerpt: "Kestrel Fasteners\nINVOICE\nDue date: 2026-11-19\n" }],
+      match: { findings: [{ lineNo: 1, amountCents: 9_900, details: { poUnitPriceCents: 397, invoicedUnitPriceCents: 415 } }] },
+    });
+    expect(old).toEqual({ source: "derived", vendorName: "Kestrel Fasteners", dueDate: "2026-11-19", lines: [{ lineNo: 1, quantity: 550, unitPriceCents: 415 }] });
+    expect(factsOf({ evidence: [] })).toBeUndefined();
+  });
+
+  it("searches, sorts and pages the case history", async () => {
+    const all = (await app.inject("/api/cases")).json();
+    expect(all).toMatchObject({ total: 2, offset: 0 });
+    const byVendor = (await app.inject("/api/cases?q=saltmarsh")).json();
+    expect(byVendor.cases.map((c: { workflowId: string }) => c.workflowId)).toEqual(["inv-20931"]);
+    const byAmount = (await app.inject("/api/cases?sort=amount&dir=asc&limit=1")).json();
+    expect(byAmount.cases.map((c: { workflowId: string }) => c.workflowId)).toEqual(["inv-20556"]);
+    expect((await app.inject("/api/cases?sort=bogus")).statusCode).toBe(400);
+  });
+
+  it("serves a skill's action table for the version on disk only", async () => {
+    const skill = (await app.inject("/api/agents/invoice-exception-resolver/skills/ap-resolution-policy?version=1.3")).json();
+    expect(skill).toMatchObject({ name: "ap-resolution-policy", version: "1.3" });
+    expect(skill.actions).toEqual([
+      { action: "accept_variance", useWhen: "The invoiced price is the contract price", effect: "Pay as invoiced. Always needs a person" },
+      { action: "escalate", useWhen: "The evidence does not settle the case", effect: "Hold and hand to an AP specialist" },
+    ]);
+    expect((await app.inject("/api/agents/invoice-exception-resolver/skills/ap-resolution-policy?version=1.2")).statusCode).toBe(404);
+    expect((await app.inject("/api/agents/invoice-exception-resolver/skills/nope")).statusCode).toBe(404);
+    expect(parseSkill("no front matter")).toBeUndefined();
+  });
+
+  it("reports who is signed in and where the identity came from", async () => {
+    expect((await app.inject("/api/me")).json()).toEqual({ user: "local-user", source: "local" });
+    expect((await app.inject({ url: "/api/me", headers: { "x-goog-authenticated-user-email": "accounts.google.com:a@b.c" } })).json()).toEqual({ user: "a@b.c", source: "iap" });
+  });
+
+  it("computes business figures from the loaded cases", async () => {
+    const { value } = (await app.inject("/api/mission")).json();
+    expect(value).toMatchObject({ cases: 2, awaitingDecisionCents: 128_400, closed: 1, closedWithoutPerson: 1, medianSecondsToProposal: 12, manualCostPerCaseUsd: null });
   });
 
   it("builds Mission Control: health, figures, boundary events and servers", async () => {

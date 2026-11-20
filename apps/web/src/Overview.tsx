@@ -1,4 +1,5 @@
-import { ago, caseGroup, GROUP_LABEL, plain, titleCase, usd, type Agent, type CaseGroup, type Mission } from "./api.js";
+import { ago, caseGroup, cents, GROUP_LABEL, plain, titleCase, usd, type Agent, type CaseGroup, type Mission } from "./api.js";
+import { nextStep } from "./CaseTable.js";
 
 const STATUS: Record<Agent["status"], [string, string]> = { active: ["ok", "Active"], needs_review: ["warn", "Needs Decision"], idle: ["idle", "Idle"], coming_soon: ["idle", "Roadmap"] };
 const DIST: Array<[CaseGroup, string]> = [
@@ -39,9 +40,12 @@ export function Overview(props: { mission?: Mission; agents: Agent[]; onNav: (ha
               <span className="lab">
                 {waiting.length} {waiting.length === 1 ? "decision" : "decisions"} waiting · this one for {ago(r.startedAt)}
               </span>
-              <b>{titleCase(r.title.split(" · ").slice(1).join(" · ")) || r.title} on {r.ref}</b>
+              <b>
+                {r.amountCents ? `${cents(Math.abs(r.amountCents))} ` : ""}
+                {titleCase(r.title.split(" · ").slice(1).join(" · ")) || r.title} on {r.ref}
+              </b>
               <span className="d">
-                {name(r.agentId)}. {plain(r.detail)}
+                {name(r.agentId)}{r.vendorName ? ` · ${r.vendorName}` : ""}. {nextStep(r)}.
               </span>
             </div>
             <button type="button" className="btn primary" onClick={() => props.onNav(`#/agent/${r.agentId}/case/${r.workflowId}`)}>
@@ -64,6 +68,24 @@ export function Overview(props: { mission?: Mission; agents: Agent[]; onNav: (ha
           </div>
         </div>
       </section>
+
+      {m.value && m.value.cases > 0 && (
+        <section aria-labelledby="ov-value" className="kpi-block">
+          <h2 id="ov-value" className="lab">
+            Invoice Resolver · Last {m.value.cases} Cases
+          </h2>
+          <div className="kpis">
+            <Kpi label="Awaiting Decision" value={cents(m.value.awaitingDecisionCents)} sub="Value of the adjustments waiting on a person" />
+            <Kpi label="Invoice Value Processed" value={cents(m.value.invoiceValueProcessedCents)} sub={`Across ${m.value.closed} closed cases`} />
+            <Kpi label="Closed Without a Person" value={m.value.closed ? `${Math.round((100 * m.value.closedWithoutPerson) / m.value.closed)}%` : "–"} sub={`${m.value.closedWithoutPerson} of ${m.value.closed} closed cases`} />
+            <Kpi label="Median Time to Proposal" value={m.value.medianSecondsToProposal == null ? "–" : `${Math.round(m.value.medianSecondsToProposal)}s`} sub="From the match to a proposed resolution" />
+            <Kpi label="Cost per Case" value={usd(m.value.costPerCaseUsd, 4)} sub="Model spend per case worked" />
+            {m.value.manualCostPerCaseUsd != null && m.value.costPerCaseUsd != null && (
+              <Kpi label="Against Manual Processing" value={`${Math.round(m.value.manualCostPerCaseUsd / Math.max(m.value.costPerCaseUsd, 0.0001)).toLocaleString("en-US")}× lower`} sub={`Against ${usd(m.value.manualCostPerCaseUsd)} a case by hand, as configured`} />
+            )}
+          </div>
+        </section>
+      )}
 
       {m.runs.length > 0 && (
         <section className="panel card" aria-labelledby="ov-dist">

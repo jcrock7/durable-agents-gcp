@@ -35,6 +35,8 @@ export interface Progress {
   draftVersion: number;
   draft?: Draft;
   lastFeedback?: string;
+  /** What the run did, in order, for the portal's step strip. */
+  timeline?: Array<{ name: string; at: string; detail: string; state: "done" | "now" }>;
 }
 
 export type ResearchStatus =

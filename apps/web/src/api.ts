@@ -31,6 +31,35 @@ export interface CaseSummary {
   closedAt?: string;
   costUsd: number;
   detail: string;
+  /** Why the case stands where it does; absent when the detail already says it. */
+  reason?: string;
+  amountCents?: number;
+  vendorName?: string;
+}
+
+/** Invoice facts from the API. "derived" marks runs from before the workflow recorded them. */
+export interface CaseFacts {
+  source: "erp" | "derived";
+  vendorName?: string;
+  dueDate?: string;
+  lines: Array<{ lineNo: number; itemId?: string; description?: string; quantity?: number; uom?: string; unitPriceCents?: number }>;
+}
+
+export interface Skill {
+  name: string;
+  version: string;
+  actions: Array<{ action: string; useWhen: string; effect: string }>;
+}
+
+export interface CasePage {
+  total: number;
+  offset: number;
+  cases: CaseSummary[];
+}
+
+export interface Me {
+  user: string;
+  source?: "iap" | "local";
 }
 
 // The workflows' caseState / progress query results: shapes owned by the agents.
@@ -41,6 +70,7 @@ export interface CaseDetail {
   agentId: string;
   summary: CaseSummary;
   state: AnyState | null;
+  facts?: CaseFacts | null;
 }
 
 export interface Mission {
@@ -58,6 +88,17 @@ export interface Mission {
   };
   runs: CaseSummary[];
   events: Array<{ kind: string; agentId: string; workflowId: string; text: string; at: string }>;
+  /** Business figures over the cases the overview loaded. Absent on older APIs. */
+  value?: {
+    cases: number;
+    awaitingDecisionCents: number;
+    invoiceValueProcessedCents: number;
+    closed: number;
+    closedWithoutPerson: number;
+    medianSecondsToProposal: number | null;
+    costPerCaseUsd: number | null;
+    manualCostPerCaseUsd: number | null;
+  };
   servers: Array<{ name: string; kind: string; ready: number; replicas: number; hpa?: { min: number; max: number; current: number; cpuPercent: number | null } }>;
 }
 

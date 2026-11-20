@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
-import { usePoll, type Agent, type Mission } from "./api.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { usePoll, type Agent, type Me, type Mission } from "./api.js";
 import { AgentView } from "./AgentView.js";
 import { CaseTable } from "./CaseTable.js";
 import { Overview } from "./Overview.js";
 import { Sidebar, type View } from "./Sidebar.js";
-import { Moon, Person, Sun } from "./icons.js";
+import { Person } from "./icons.js";
 
 const store = {
   get: (k: string) => {
@@ -38,13 +38,24 @@ function readHash(): Route {
   return { view: "overview" };
 }
 
+type ThemeChoice = "light" | "dark" | "system";
+const THEMES: Array<[ThemeChoice, string]> = [
+  ["light", "Light"],
+  ["dark", "Dark"],
+  ["system", "System"],
+];
+const systemDark = () => matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
+
 export function App() {
   const agents = usePoll<Agent[]>("/api/agents", 5_000);
   const [route, setRoute] = useState(readHash);
-  const mission = usePoll<Mission>("/api/mission", route.view === "agent" ? 30_000 : 5_000);
-  const me = usePoll<{ user: string }>("/api/me", 600_000);
-  const [theme, setTheme] = useState(() => store.get("theme") ?? (matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+  const mission = usePoll<Mission>("/api/mission", route.view === "overview" ? 5_000 : 30_000);
+  const me = usePoll<Me>("/api/me", 600_000);
+  const [choice, setChoice] = useState<ThemeChoice>(() => (store.get("theme") as ThemeChoice | null) ?? "system");
+  const [dark, setDark] = useState(systemDark);
   const [collapsed, setCollapsed] = useState(() => store.get("sidebar") === "collapsed");
+  const [menu, setMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onHash = () => {
@@ -54,10 +65,29 @@ export function App() {
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
   }, []);
+  useEffect(() => {
+    const mq = matchMedia?.("(prefers-color-scheme: dark)");
+    const on = () => setDark(mq.matches);
+    mq?.addEventListener("change", on);
+    return () => mq?.removeEventListener("change", on);
+  }, []);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: Event) => {
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !menuRef.current?.contains(e.target as Node)) setMenu(false);
+    };
+    addEventListener("mousedown", close);
+    addEventListener("keydown", close);
+    return () => {
+      removeEventListener("mousedown", close);
+      removeEventListener("keydown", close);
+    };
+  }, [menu]);
   const nav = useCallback((hash: string) => {
     location.hash = hash;
   }, []);
 
+  const theme = choice === "system" ? (dark ? "dark" : "light") : choice;
   const list = agents.data ?? [];
   const agent = route.view === "agent" ? list.find((a) => a.id === route.agent) : undefined;
   const onCase = useCallback((id: string | null) => agent && nav(`#/agent/${agent.id}${id ? `/case/${id}` : ""}`), [agent, nav]);
@@ -104,23 +134,46 @@ export function App() {
               </>
             )}
           </nav>
-          <button
-            type="button"
-            className="top-btn"
-            onClick={() => {
-              const next = theme === "dark" ? "light" : "dark";
-              store.set("theme", next);
-              setTheme(next);
-            }}
-            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          >
-            {theme === "dark" ? <Sun /> : <Moon />}
-          </button>
-          <span className="user-chip" title="Profile and settings" aria-label={`Signed in as ${user}`}>
-            <Person />
-            {user}
-          </span>
+          <div className="menu-wrap" ref={menuRef}>
+            <button type="button" className="user-chip" aria-haspopup="menu" aria-expanded={menu} aria-label={`Signed in as ${user}. Profile and settings`} onClick={() => setMenu(!menu)}>
+              <Person />
+              {user}
+            </button>
+            {menu && (
+              <div className="menu" role="menu">
+                <div className="menu-id">
+                  <span className="lab">Signed In As</span>
+                  <b>{user}</b>
+                  <span className="muted">{me.data?.source === "iap" ? "Through your organisation’s sign-in" : "Local development identity"}</span>
+                </div>
+                <div className="menu-sec">
+                  <span className="lab">Theme</span>
+                  <div className="seg" role="radiogroup" aria-label="Theme">
+                    {THEMES.map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={choice === id}
+                        className={choice === id ? "on" : ""}
+                        onClick={() => {
+                          store.set("theme", id);
+                          setChoice(id);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {me.data?.source === "iap" && (
+                  <a className="menu-link" role="menuitem" href="/_gcp_iap/clear_login_cookie">
+                    Sign Out
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
         </header>
 
         {agents.error && !agents.data && (
@@ -135,12 +188,7 @@ export function App() {
         )}
         {(route.view === "cases" || route.view === "needs") && (
           <main className="page">
-            <CaseTable key={route.view} cases={mission.data?.runs} agents={list} initial={route.view === "needs" ? "needs" : "open"} onOpen={(c) => nav(`#/agent/${c.agentId}/case/${c.workflowId}`)} />
-            {mission.data && (
-              <div className="muted" style={{ fontSize: 13.5 }}>
-                {mission.data.runs.length} Recent Cases
-              </div>
-            )}
+            <CaseTable key={route.view} agents={list} initial={route.view === "needs" ? "needs" : "open"} onOpen={(c) => nav(`#/agent/${c.agentId}/case/${c.workflowId}`)} />
           </main>
         )}
         {route.view === "agent" && agent && <AgentView key={agent.id} agent={agent} me={user} caseId={route.case ?? null} onCase={onCase} />}

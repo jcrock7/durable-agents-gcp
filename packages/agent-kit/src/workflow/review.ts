@@ -7,6 +7,13 @@ export interface ReviewDecision {
   /** Required when rejecting: what to change. */
   feedback?: string;
   reviewer?: string;
+  /** Hand the case to a person instead of approving or sending it back. Only for workflows that opt in. */
+  escalate?: { note: string };
+}
+
+export interface ReviewGateOptions {
+  /** Accept decisions that escalate the case to a person. */
+  allowEscalate?: boolean;
 }
 
 export interface ReviewAck {
@@ -31,7 +38,7 @@ export class ReviewGate {
   private draftVersion = 0;
   private decision: ReviewDecision | undefined;
 
-  constructor() {
+  constructor(options: ReviewGateOptions = {}) {
     setHandler(
       reviewUpdate,
       (decision) => {
@@ -41,6 +48,11 @@ export class ReviewGate {
       {
         validator: (decision) => {
           if (!this.open) throw new Error("not waiting for review");
+          if (decision?.escalate) {
+            if (!options.allowEscalate) throw new Error("this case cannot be escalated");
+            if (!decision.escalate.note?.trim()) throw new Error("a note is required when escalating");
+            return;
+          }
           if (typeof decision?.approved !== "boolean") throw new Error("'approved' must be true or false");
           if (!decision.approved && !decision.feedback?.trim()) {
             throw new Error("'feedback' is required when rejecting a draft");

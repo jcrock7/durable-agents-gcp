@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { postJson, usd, usePoll, type Agent, type CaseDetail, type CaseSummary } from "./api.js";
+import { postJson, usd, usePoll, type Agent, type CaseDetail } from "./api.js";
 import { CaseTable } from "./CaseTable.js";
 import { CaseView } from "./CaseView.js";
 
@@ -12,7 +12,6 @@ const STATUS: Record<Agent["status"], [string, string]> = {
 
 /** One agent: its header and case queue, or the selected case as a full page (ADR-0021). */
 export function AgentView({ agent, me, caseId, onCase }: { agent: Agent; me: string; caseId: string | null; onCase: (id: string | null) => void }) {
-  const cases = usePoll<CaseSummary[]>(agent.built ? `/api/agents/${agent.id}/cases` : null, 4_000);
   const detail = usePoll<CaseDetail>(caseId ? `/api/cases/${caseId}` : null, 3_000);
   const [queueMsg, setQueueMsg] = useState<string>();
 
@@ -25,10 +24,7 @@ export function AgentView({ agent, me, caseId, onCase }: { agent: Agent; me: str
         agent={agent}
         me={me}
         onBack={() => onCase(null)}
-        onChanged={() => {
-          detail.reload();
-          cases.reload();
-        }}
+        onChanged={() => detail.reload()}
       />
     );
   }
@@ -88,16 +84,36 @@ export function AgentView({ agent, me, caseId, onCase }: { agent: Agent; me: str
       </section>
 
       {!agent.built && (
-        <div className="notice">
-          <span className="tag info">Roadmap</span>
-          <span>This agent is designed but not built yet (see ADR-0019). Its cases will appear here once it runs.</span>
-        </div>
+        <>
+          <div className="notice">
+            <span className="tag info">Roadmap</span>
+            <span>This agent is designed but not built yet. Its cases will appear here once it runs.</span>
+          </div>
+          <div className="ov-cols">
+            <section className="panel card">
+              <h2 className="lab">What It Will Do</h2>
+              <p className="rec">{agent.blurb}</p>
+            </section>
+            <section className="panel card">
+              <h2 className="lab">How It Will Work</h2>
+              <dl className="kv">
+                <dt>Pattern</dt>
+                <dd>{agent.pattern}</dd>
+                <dt>Systems it will connect to</dt>
+                <dd>{agent.tools.join(", ") || "–"}</dd>
+                <dt>Model tiers</dt>
+                <dd>{agent.models}</dd>
+                <dt>Design record</dt>
+                <dd>ADR-0019, pattern agent portfolio</dd>
+              </dl>
+            </section>
+          </div>
+        </>
       )}
-      {cases.error && !cases.data && <div className="error">Could not load cases: {cases.error}</div>}
 
       {agent.built && (
         <CaseTable
-          cases={cases.data}
+          agentId={agent.id}
           onOpen={(c) => onCase(c.workflowId)}
           action={
             agent.id === "invoice-exception-resolver" ? (
@@ -122,11 +138,6 @@ export function AgentView({ agent, me, caseId, onCase }: { agent: Agent; me: str
             ) : undefined
           }
         />
-      )}
-      {agent.built && cases.data && (
-        <div className="muted" style={{ fontSize: 13.5 }}>
-          {cases.data.length} Recent Cases
-        </div>
       )}
     </main>
   );

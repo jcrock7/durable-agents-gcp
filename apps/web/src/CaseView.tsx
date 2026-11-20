@@ -1,48 +1,49 @@
 import { Fragment, useState, type ReactNode } from "react";
-import { cents, caseTag, plain, postJson, shortDate, sourceLabel, titleCase, usd, type Agent, type AnyState, type CaseDetail } from "./api.js";
+import { cents, caseTag, plain, postJson, shortDate, sourceLabel, titleCase, usd, usePoll, type Agent, type AnyState, type CaseDetail, type Skill } from "./api.js";
+import { approveEffect, escalateEffect, sendBackEffect } from "./effects.js";
 import { Inspector } from "./Inspector.js";
+import { clock, StepStrip, stepTime, type Step } from "./StepStrip.js";
 
-/**
- * The actions of the ap-resolution-policy skill, version 1.3 (agents/general/invoice-exception-resolver/skills).
- * Shown beside a proposal so a reviewer can check the action against the policy. Only used when the run recorded
- * that version; the API does not serve skill text yet.
- */
-const POLICY_VERSION = "1.3";
-const POLICY: Record<string, { when: string; effect: string }> = {
-  accept_variance: { when: "The invoiced price is the contract price in effect on the invoice date, for example a documented price change after the PO was issued.", effect: "Pay as invoiced. Always needs a person." },
-  request_credit_memo: { when: "Billed above a contract price that is on file for the invoice date (and above the PO), with no change on record; or billed a charge the vendor's terms do not allow.", effect: "Hold the invoice and ask the vendor for a credit memo." },
-  short_pay: { when: "Fewer units were received than invoiced, and nothing shows the rest is coming.", effect: "Pay for what was received; tell the vendor. Always needs a person." },
-  wait_for_receipt: { when: "No receipt, and a shipment notice shows the goods are still in transit.", effect: "Hold and wait; the case re-checks daily." },
-  request_receipt_entry: { when: "No receipt, but a proof of delivery shows the goods arrived.", effect: "Ask receiving to post the receipt, then wait." },
-  accept_uom_conversion: { when: "Billed by the case against a PO in units, and the converted amounts agree.", effect: "Pay as invoiced." },
-  accept_charge: { when: "A charge not on the PO that the vendor's terms allow, within the cap.", effect: "Pay as invoiced." },
-  reject_duplicate: { when: "The same invoice was already paid.", effect: "Do not pay; tell the vendor. Always needs a person." },
-  reassign_po: { when: "The invoice cites the wrong PO and one open PO fits its lines.", effect: "Ask the buyer to confirm, record the correct PO." },
-  escalate: { when: "The evidence does not settle the case, the evidence conflicts, or a fraud flag applies.", effect: "Hold and hand to an AP specialist." },
-};
+const POLICY_SKILL = "ap-resolution-policy";
+const RELEVANCE: Record<string, [string, string]> = { supports: ["ok", "Supports"], contradicts: ["crit", "Contradicts"], not_applicable: ["idle", "Not Applicable"] };
 
 /** The selected case as a page: the decision first, then the agent's work, the numbers, the evidence and the audit trail. */
 export function CaseView({ detail, agent, me, onBack, onChanged }: { detail: CaseDetail; agent: Agent; me: string; onBack: () => void; onChanged: () => void }) {
   if (!detail.state) {
     return (
       <main className="page">
-        <div className="panel empty">This run has no state to show (it may have failed to start).</div>
+        <div className="panel empty">{detail.summary.reason ?? "This run has no state to show (it may have failed to start)."}</div>
       </main>
     );
   }
-  return detail.agentId === "research-summarize" ? <ResearchCase detail={detail} me={me} onChanged={onChanged} /> : <InvoiceCase detail={detail} agent={agent} me={me} onBack={onBack} onChanged={onChanged} />;
+  return detail.agentId === "research-summarize" ? <ResearchCase detail={detail} agent={agent} me={me} onBack={onBack} onChanged={onChanged} /> : <InvoiceCase detail={detail} agent={agent} me={me} onBack={onBack} onChanged={onChanged} />;
 }
 
-function ReviewBar(props: { workflowId: string; me: string; approveLabel: string; ifApprove: string; ifSendBack: string; onChanged: () => void }) {
-  const [feedback, setFeedback] = useState("");
+function ReviewBar(props: {
+  workflowId: string;
+  me: string;
+  approveLabel: string;
+  ifApprove: string;
+  ifSendBack: string;
+  /** Present when the case can be handed to a person. */
+  ifEscalate?: string;
+  /** When a rule found a conflict: suggested feedback, and sending back becomes the primary action. */
+  conflictHint?: string;
+  onChanged: () => void;
+}) {
+  const [feedback, setFeedback] = useState(props.conflictHint ?? "");
+  const [note, setNote] = useState("");
+  const [escalating, setEscalating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const send = async (approved: boolean) => {
+  const send = async (body: Record<string, unknown>) => {
     setBusy(true);
     setError(undefined);
     try {
-      await postJson(`/api/cases/${props.workflowId}/review`, approved ? { approved } : { approved, feedback });
+      await postJson(`/api/cases/${props.workflowId}/review`, body);
       setFeedback("");
+      setNote("");
+      setEscalating(false);
       props.onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -50,47 +51,75 @@ function ReviewBar(props: { workflowId: string; me: string; approveLabel: string
       setBusy(false);
     }
   };
+  const approve = (
+    <button type="button" className={`btn${props.conflictHint ? "" : " primary"}`} disabled={busy} onClick={() => void send({ approved: true })}>
+      {props.approveLabel}
+    </button>
+  );
+  const sendBack = (
+    <button type="button" className={`btn${props.conflictHint ? " primary" : ""}`} disabled={busy || !feedback.trim()} title={feedback.trim() ? "" : "Write feedback for the agent first"} onClick={() => void send({ approved: false, feedback })}>
+      Send Back to Agent
+    </button>
+  );
   return (
     <div className="dbar">
       <div className="what">
         <b>If you approve:</b> {props.ifApprove} <b>If you send back:</b> {props.ifSendBack}
+        {escalating && props.ifEscalate ? (
+          <>
+            {" "}
+            <b>If you escalate:</b> {props.ifEscalate}
+          </>
+        ) : null}
       </div>
-      <button type="button" className="btn primary" disabled={busy} onClick={() => void send(true)}>
-        {props.approveLabel}
-      </button>
-      <label htmlFor="feedback" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>
+      {!props.conflictHint && approve}
+      <label htmlFor="feedback" className="sr">
         Feedback for the agent
       </label>
       <textarea id="feedback" className="feedback" rows={1} placeholder="Or tell the agent what to do instead, e.g. ask for a credit memo" value={feedback} onChange={(e) => setFeedback(e.target.value)} />
-      <button type="button" className="btn" disabled={busy || !feedback.trim()} title={feedback.trim() ? "" : "Write feedback for the agent first"} onClick={() => void send(false)}>
-        Send Back to Agent
-      </button>
+      {sendBack}
+      {props.conflictHint && approve}
+      {props.ifEscalate && !escalating && (
+        <button type="button" className="btn" disabled={busy} onClick={() => setEscalating(true)}>
+          Escalate to AP Specialist
+        </button>
+      )}
       <span className="who">Recorded as {props.me}</span>
+      {escalating && (
+        <div className="esc">
+          <label htmlFor="esc-note" className="sr">
+            Note for the AP specialist
+          </label>
+          <input id="esc-note" type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note for the AP specialist, e.g. the buyer should confirm this price with the vendor" />
+          <button type="button" className="btn primary" disabled={busy || !note.trim()} onClick={() => void send({ escalate: { note } })}>
+            Confirm Escalation
+          </button>
+          <button type="button" className="btn" disabled={busy} onClick={() => setEscalating(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
       {error && <span style={{ flexBasis: "100%", color: "var(--warn)" }}>{error}</span>}
     </div>
   );
 }
 
-/** Pull one field out of a JSON-looking excerpt, even when the excerpt was cut short. */
+/** Pull one field out of a tool result that is JSON, even when the excerpt was cut short. */
 function field(raw: string, key: string): string | undefined {
   const m = new RegExp(`"${key}"\\s*:\\s*(?:"((?:[^"\\\\]|\\\\.)*)"?|(-?[\\d.]+))`).exec(raw);
   return m ? (m[1] ?? m[2])?.replace(/\\n/g, " ").replace(/\\"/g, '"') : undefined;
 }
-const line = (raw: string, label: RegExp) => label.exec(raw)?.[1]?.trim();
 
-/** A sentence a controller can check, in place of the raw tool output. */
-function describe(e: AnyState): { title: string; body: string } {
+/** A sentence a controller can check, in place of the raw tool output. Invoice facts come from the case, not the document text. */
+function describe(e: AnyState, s: AnyState, dueDate?: string): { title: string; body: string } {
   const raw = String(e.excerpt ?? "");
   const src = sourceLabel(e.source);
   if (/^\(no rows\)$/i.test(raw.trim())) return { title: src, body: "The search returned nothing." };
   if (String(e.source).startsWith("docs:")) {
-    const no = line(raw, /Invoice number:\s*(.+)/i);
-    const parts = [
-      line(raw, /Invoice date:\s*(.+)/i) && `Dated ${shortDate(line(raw, /Invoice date:\s*(.+)/i))}`,
-      line(raw, /Customer PO:\s*(.+)/i),
-      line(raw, /Due date:\s*(.+)/i) && `due ${shortDate(line(raw, /Due date:\s*(.+)/i))}`,
-    ].filter(Boolean);
-    return { title: no ? `Invoice ${no}` : src, body: parts.length ? `${parts.join(", ")}. From ${raw.split("\n")[0]}.` : raw.slice(0, 200) };
+    const inv = s.invoice;
+    if (!inv) return { title: src, body: "The vendor's document, read as text." };
+    const parts = [inv.invoiceDate && `Dated ${shortDate(inv.invoiceDate)}`, inv.poReference, dueDate && `due ${shortDate(dueDate)}`, inv.totalDue && `total ${inv.totalDue}`].filter(Boolean);
+    return { title: `Invoice ${inv.vendorInvoiceNumber}`, body: `${parts.join(", ")}.` };
   }
   if (raw.trim().startsWith("{") || raw.trim().startsWith("[")) {
     const price = field(raw, "price_cents");
@@ -128,10 +157,16 @@ function cited(text: string): ReactNode[] {
   );
 }
 
-const stamp = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour12: false });
+function BackLink({ agent, onBack }: { agent: Agent; onBack: () => void }) {
+  return (
+    <button type="button" className="link-btn" onClick={onBack}>
+      ‹ All {agent.name} Cases
+    </button>
+  );
+}
 
 function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDetail; agent: Agent; me: string; onBack: () => void; onChanged: () => void }) {
-  const { summary } = detail;
+  const { summary, facts } = detail;
   const s = detail.state!;
   const [tagClass, tagText] = caseTag(summary);
   const proposal = s.proposal;
@@ -143,13 +178,12 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
   const usage: AnyState[] = s.usage ?? [];
   const cost = usage.reduce((sum, u) => sum + (u.costUsd ?? 0), 0);
   const [reason, setReason] = useState("");
-  const [step, setStep] = useState<number | null>(null);
-  const sel = step ?? timeline.length - 1;
 
-  // Header facts. Vendor and due date are only on the invoice PDF text today, so they are read from that evidence.
-  const pdf = String(evidence.find((e) => String(e.source).startsWith("docs:"))?.excerpt ?? "");
-  const vendor = pdf.split("\n")[0]?.trim() || undefined;
-  const due = line(pdf, /Due date:\s*(.+)/i);
+  const policyVersion: string | undefined = s.skillVersions?.[POLICY_SKILL];
+  const policy = usePoll<Skill>(policyVersion ? `/api/agents/${agent.id}/skills/${POLICY_SKILL}?version=${encodeURIComponent(policyVersion)}` : null, 600_000).data;
+  const rule = (action?: string) => policy?.actions.find((a) => a.action === action);
+
+  const vendor = facts?.vendorName;
   const invNo: string | undefined = s.invoice?.vendorInvoiceNumber;
   const exception = (proposal?.exceptionType ?? s.match?.exceptionTypes?.[0] ?? "exception").replace(/_/g, " ");
   const amount: number | undefined = s.adjustment?.amountCents;
@@ -161,164 +195,150 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
       ? `Approve a ${cents(amount)} ${exception} on ${subject}?`
       : `Approve “${actionLabel}” for the ${exception} on ${subject}?`;
 
-  // The numbers, from the match engine's finding.
+  // The numbers: unit prices from the match engine's finding, quantity and item from the ERP line.
   const finding: AnyState | undefined = (s.match?.findings ?? []).find((f: AnyState) => f.details?.invoicedUnitPriceCents != null && f.details?.poUnitPriceCents != null);
   const d = finding?.details;
-  const unitGap = d ? d.invoicedUnitPriceCents - d.poUnitPriceCents : 0;
-  const qty = d && unitGap > 0 && finding?.amountCents ? finding.amountCents / unitGap : null;
-  const wholeQty = qty != null && Math.abs(qty - Math.round(qty)) < 0.01 ? Math.round(qty) : null;
+  const line = facts?.lines.find((l) => l.lineNo === finding?.lineNo);
+  const qty = line?.quantity;
   const basePct = d ? (100 * d.poUnitPriceCents) / d.invoicedUnitPriceCents : 0;
-  const overPct = d && d.poUnitPriceCents ? (100 * unitGap) / d.poUnitPriceCents : 0;
+  const overPct = d && d.poUnitPriceCents ? (100 * (d.invoicedUnitPriceCents - d.poUnitPriceCents)) / d.poUnitPriceCents : 0;
 
   // Why a person: the rules that fired, with the approval line drawn when one of them is the threshold.
   const reasons: string[] = route?.reasons ?? s.reasons ?? [];
-  const line$ = reasons.map((r) => /amount (\d+(?:\.\d+)?) is over the (\d+(?:\.\d+)?) approval line/.exec(r)).find(Boolean);
-  const over = line$ ? { amount: Number(line$[1]), limit: Number(line$[2]) } : null;
+  const lineMatch = reasons.map((r) => /amount (\d+(?:\.\d+)?) is over the (\d+(?:\.\d+)?) approval line/.exec(r)).find(Boolean);
+  const over = lineMatch ? { amount: Number(lineMatch[1]), limit: Number(lineMatch[2]) } : null;
   const scale = over ? Math.max(over.amount * 1.1, over.limit * 1.5) : 1;
   const routing =
     s.status === "blocked" || s.status === "escalated"
       ? `${s.status === "blocked" ? "Blocked" : "Escalated to a person"}. The invoice is held.`
-      : route?.path === "escalate"
-        ? "Goes to a person. The invoice is held."
-        : route?.needsPerson
-          ? s.reviewer
-            ? `Approved by ${s.reviewer}.`
-            : null
-          : route
-            ? "No approval needed: within policy."
-            : "The agent is still working on this case.";
+      : s.status === "on_hold"
+        ? "On hold."
+        : route?.path === "escalate"
+          ? "Goes to a person. The invoice is held."
+          : route?.needsPerson
+            ? s.reviewer
+              ? `Approved by ${s.reviewer}.`
+              : null
+            : route
+              ? "No approval needed: within policy."
+              : "The agent is still working on this case.";
+  const closing: string[] = s.status ? (s.reasons ?? []).filter((r: string) => !reasons.includes(r)) : [];
+
+  const fit: { fits: boolean; expected?: string; why?: string } | undefined = route?.policyFit;
+  const conflict = fit && !fit.fits ? fit : undefined;
+  const alternatives: Array<{ action: string; whyNot: string }> = proposal?.alternatives ?? [];
 
   const proposedAt = timeline.find((t) => /propose/i.test(t.name))?.at;
   const seconds = proposedAt && timeline[0] ? Math.round((Date.parse(proposedAt) - Date.parse(timeline[0].at)) / 1000) : null;
-  const policy = s.skillVersions?.["ap-resolution-policy"] === POLICY_VERSION && proposal?.action ? POLICY[proposal.action] : undefined;
 
-  const stepTitle = (t: AnyState, i: number) =>
-    i === 0 && /^match$/i.test(t.name) && s.match?.exceptionTypes?.length
-      ? `${titleCase(s.match.exceptionTypes[0])} Found`
-      : /^route$/i.test(t.name)
-        ? "Checked Rules"
-        : t.state === "now" && summary.needsPerson
-          ? "Your Decision"
-          : titleCase(t.name);
-  const stepResult = (t: AnyState, i: number) =>
-    i === 0 && finding && d
-      ? `Three-way match: line ${finding.lineNo} billed at ${cents(d.invoicedUnitPriceCents)} a unit; PO says ${cents(d.poUnitPriceCents)}`
-      : /^route$/i.test(t.name)
-        ? reasons.length
-          ? `${reasons.length} ${reasons.length === 1 ? "rule requires" : "rules require"} a person`
-          : "Within policy"
-        : t.state === "now" && summary.needsPerson
-          ? "Nothing posts until you approve"
-          : plain(String(t.detail ?? "").replace(/^exception:\s*/i, ""));
-  const selected = timeline[sel];
-  const from = sel > 0 ? Date.parse(timeline[sel - 1]!.at) : -Infinity;
-  const stepCalls = selected ? calls.filter((c) => Date.parse(c.at) > from && Date.parse(c.at) <= Date.parse(selected.at)) : [];
-  const stepUsage = selected ? usage.filter((u) => String(selected.name).toLowerCase().includes(String(u.step).toLowerCase().split(" ")[0]!)) : [];
+  const steps: Step[] = timeline.map((t, i) => {
+    const isRoute = /^route$/i.test(t.name);
+    const now = t.state === "now";
+    const mine = now && summary.needsPerson;
+    const from = i > 0 ? Date.parse(timeline[i - 1]!.at) : -Infinity;
+    const stepCalls = calls.filter((c) => Date.parse(c.at) > from && Date.parse(c.at) <= Date.parse(t.at));
+    const stepCost = usage.filter((u) => String(t.name).toLowerCase().includes(String(u.step).toLowerCase().split(" ")[0]!)).reduce((a, u) => a + (u.costUsd ?? 0), 0);
+    return {
+      title: i === 0 && /^match$/i.test(t.name) && s.match?.exceptionTypes?.length ? `${titleCase(s.match.exceptionTypes[0])} Found` : isRoute ? "Checked Rules" : mine ? "Your Decision" : titleCase(t.name),
+      result:
+        i === 0 && finding && d
+          ? `Three-way match: line ${finding.lineNo} billed at ${cents(d.invoicedUnitPriceCents)} a unit; PO says ${cents(d.poUnitPriceCents)}`
+          : isRoute
+            ? reasons.length
+              ? `${reasons.length} ${reasons.length === 1 ? "rule requires" : "rules require"} a person`
+              : "Within policy"
+            : mine
+              ? "Nothing posts until you approve"
+              : plain(String(t.detail ?? "").replace(/^exception:\s*/i, "")),
+      time: stepTime(timeline as Array<{ at: string; state?: string }>, i),
+      now,
+      detail: [
+        {
+          label: "What Ran",
+          body: stepCalls.length ? (
+            stepCalls.map((c, k) => (
+              <span key={k}>
+                {sourceLabel(c.ref)}{" "}
+                <span className="muted">
+                  · {c.outcome}, {c.durationMs} ms
+                </span>
+              </span>
+            ))
+          ) : (
+            <span>{isRoute ? "The workflow checked the proposal against fixed rules. The model cannot override them." : now ? "The run is paused. It resumes from here when a person decides." : "A step with no tool calls."}</span>
+          ),
+        },
+        {
+          label: isRoute || now ? "Rules" : "Recorded",
+          body:
+            isRoute || now ? (
+              reasons.length ? (
+                reasons.map((r) => <span key={r}>{plain(r)}.</span>)
+              ) : (
+                <span>No rule required a person.</span>
+              )
+            ) : (
+              <span>
+                {clock(t.at)}
+                {stepCost ? ` · model cost ${usd(stepCost, 4)}` : ""}
+              </span>
+            ),
+        },
+        { label: "Result", body: <span>{mine ? "Nothing is written to the ERP until you approve." : plain(String(t.detail ?? "")) || "Done."}</span> },
+      ],
+    };
+  });
 
-  const approveLabel = proposal?.action === "request_credit_memo" ? "Approve and Send" : "Approve and Post to ERP";
-  const ifApprove =
-    route?.path === "post"
-      ? `“${actionLabel}”${amount != null ? ` for ${cents(amount)}` : ""} is written to the ERP and the exception on invoice ${summary.ref} is marked ${plain(route.invoiceStatus ?? "resolved").toLowerCase()}.`
-      : s.message
-        ? `the queued message is sent to ${s.message.to} and the case follows the “${actionLabel}” path.`
-        : `the case follows the “${actionLabel}” path.`;
-  const ifSendBack = `nothing is written. The case returns to the ${agent.name} agent, which reworks its proposal using your feedback and brings round ${Number(s.round ?? 1) + 1} back to you.`;
+  const approveLabel = route?.path === "post" ? "Approve and Post to ERP" : route?.path === "hold" ? "Approve and Hold Invoice" : "Approve";
+  const ifApprove = approveEffect({ actionLabel, ref: summary.ref, path: route?.path, amountCents: amount, payableCents: s.adjustment?.payableCents, messageTo: route?.message?.recipient });
+  const waitingSince = Date.parse(timeline.find((t) => t.state === "now")?.at ?? summary.startedAt);
+  const waitedMin = Math.max(0, Math.round((Date.now() - waitingSince) / 60000));
+  const waited = waitedMin < 60 ? `${waitedMin}m` : `${Math.floor(waitedMin / 60)}h ${waitedMin % 60}m`;
 
   return (
     <>
       <main className="page" aria-labelledby="case-h">
         <div className="dh">
           <div className="row" style={{ alignItems: "center" }}>
-            <span className={`tag ${tagClass}${summary.needsPerson ? " solid" : ""}`}>{summary.needsPerson ? `Needs Your Decision · Waiting ${ageOf(timeline, summary.startedAt)}` : tagText}</span>
-            <button type="button" className="link-btn" onClick={onBack}>
-              ‹ All {agent.name} Cases
-            </button>
+            <span className={`tag ${tagClass}${summary.needsPerson ? " solid" : ""}`}>{summary.needsPerson ? `Needs Your Decision · Waiting ${waited}` : tagText}</span>
+            <BackLink agent={agent} onBack={onBack} />
           </div>
           <h1 id="case-h">{headline}</h1>
+          {!summary.needsPerson && summary.reason && <p className="why">{plain(summary.reason)}.</p>}
           <dl className="meta">
             {vendor && <Fact k="Vendor" v={vendor} />}
             {invNo && <Fact k="Vendor Invoice" v={invNo} />}
             {s.invoice?.totalDue && <Fact k="Invoice Total" v={s.invoice.totalDue} />}
             {s.invoice?.poReference && <Fact k="Purchase Order" v={s.invoice.poReference} />}
             {s.invoice?.invoiceDate && <Fact k="Invoice Date" v={shortDate(s.invoice.invoiceDate)} />}
-            {due && <Fact k="Due" v={shortDate(due)} />}
+            {facts?.dueDate && <Fact k="Due" v={shortDate(facts.dueDate)} />}
             <Fact k="Case" v={summary.ref} />
           </dl>
         </div>
 
-        {timeline.length > 0 && (
-          <div className="steps-wrap">
-            <ol className="steps">
-              {timeline.map((t, i) => (
-                <li key={i}>
-                  <button type="button" className={`step${t.state === "now" ? " now" : ""}${i === sel ? " sel" : ""}`} aria-pressed={i === sel} onClick={() => setStep(i)}>
-                    <span className="n">
-                      <i>{t.state === "now" ? i + 1 : "✓"}</i>
-                      {t.state === "now" ? "Now" : i === 0 ? stamp(t.at) : `+${Math.round((Date.parse(t.at) - Date.parse(timeline[0]!.at)) / 1000)}s`}
-                    </span>
-                    <b>{stepTitle(t, i)}</b>
-                    <span className="r">{stepResult(t, i)}</span>
-                  </button>
-                </li>
-              ))}
-            </ol>
-            {selected && (
-              <div className="panel sdw" aria-live="polite">
-                <div className="row hd">
-                  <b>
-                    Step {sel + 1} · {stepTitle(selected, sel)}
-                  </b>
-                  <span>Select any step above to see what the agent did</span>
-                </div>
-                <div className="sd">
-                  <div>
-                    <span className="lab">What Ran</span>
-                    {stepCalls.length ? (
-                      stepCalls.map((c, i) => (
-                        <span key={i}>
-                          {sourceLabel(c.ref)} <span className="muted">· {c.outcome}, {c.durationMs} ms</span>
-                        </span>
-                      ))
-                    ) : (
-                      <span>{/^route$/i.test(selected.name) ? "The workflow checked the proposal against fixed rules. The model cannot override them." : selected.state === "now" ? "The run is paused. It resumes from here when a person decides." : "A model step with no tool calls."}</span>
-                    )}
-                  </div>
-                  <div>
-                    <span className="lab">{/^route$/i.test(selected.name) || selected.state === "now" ? "Rules" : "Recorded"}</span>
-                    {/^route$/i.test(selected.name) || selected.state === "now" ? reasons.length ? reasons.map((r) => <span key={r}>{plain(r)}.</span>) : <span>No rule required a person.</span> : <span>{stamp(selected.at)}{stepUsage.length ? ` · model cost ${usd(stepUsage.reduce((a, u) => a + (u.costUsd ?? 0), 0), 4)}` : ""}</span>}
-                  </div>
-                  <div>
-                    <span className="lab">Result</span>
-                    <span>{selected.state === "now" && summary.needsPerson ? "Nothing is written to the ERP until you approve." : plain(String(selected.detail ?? "")) || "Done."}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        <StepStrip steps={steps} />
 
         <div className="g2">
           <div className="gcol">
             {d && (
               <section className="panel card" aria-labelledby="num-h">
                 <h2 id="num-h" className="lab">
-                  The Numbers · Line {finding!.lineNo}
-                  {wholeQty ? ` · ${wholeQty} Units` : ""}
+                  {["The Numbers", `Line ${finding!.lineNo}`, line?.itemId, line?.description, qty != null ? `${qty} ${line?.uom ?? "Units"}` : null].filter(Boolean).join(" · ")}
                 </h2>
                 <div className="big">
                   <b>{cents(finding!.amountCents)}</b>
                   <span>{overPct.toFixed(1)}% over the purchase order</span>
                 </div>
                 <div className="bars">
-                  {wholeQty != null && (
+                  {qty != null && (
                     <>
                       <div className="lab sub">Line Total</div>
                       <span>Purchase order</span>
                       <Bar base={basePct} />
-                      <span className="amt">{cents(wholeQty * d.poUnitPriceCents)}</span>
+                      <span className="amt">{cents(qty * d.poUnitPriceCents)}</span>
                       <span>Invoiced</span>
                       <Bar base={basePct} over />
-                      <span className="amt">{cents(wholeQty * d.invoicedUnitPriceCents)}</span>
+                      <span className="amt">{cents(qty * d.invoicedUnitPriceCents)}</span>
                     </>
                   )}
                   <div className="lab sub">Unit Price</div>
@@ -345,11 +365,16 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                   Agent Recommendation
                 </h2>
                 {proposal && (
-                  <span className="tag info">
+                  <span className={`tag ${conflict ? "crit" : "info"}`}>
                     {actionLabel} · {titleCase(proposal.confidence)} Confidence
                   </span>
                 )}
               </div>
+              {conflict && (
+                <div className="gap crit" role="alert">
+                  <b>Conflicts with policy.</b> {plain(conflict.why)}.{conflict.expected ? ` The policy points to ${titleCase(conflict.expected)}.` : ""}
+                </div>
+              )}
               <p className="rec">{proposal?.rationale ? cited(proposal.rationale) : "No proposal yet."}</p>
               {proposal?.unconfirmed ? (
                 <div className="gap">
@@ -361,20 +386,46 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                   <b>Citation check failed.</b> The proposal cites evidence that does not exist.
                 </div>
               )}
-              {policy && (
-                <div className="pol">
-                  <div className="ph">
-                    AP Resolution Policy {POLICY_VERSION} · {actionLabel}
-                  </div>
-                  <p>
-                    <span>Use when</span>
-                    <span>{policy.when}</span>
-                  </p>
-                  <p>
-                    <span>Effect</span>
-                    <span>{policy.effect}</span>
-                  </p>
+
+              {proposal && (fit || alternatives.length > 0 || rule(proposal.action)) && (
+                <div className="opts" aria-label="Options">
+                  <div className="lab">Options</div>
+                  <Option kind="Agent proposed" action={proposal.action} text={rule(proposal.action)?.useWhen} verdict={fit ? (fit.fits ? "fits" : "conflict") : undefined} />
+                  {conflict?.expected && <Option kind="Policy points to" action={conflict.expected} text={rule(conflict.expected)?.useWhen} verdict="fits" />}
+                  {alternatives
+                    .filter((a) => a.action !== conflict?.expected)
+                    .map((a) => (
+                      <Option key={a.action} kind="Agent weighed" action={a.action} text={a.whyNot} quoted />
+                    ))}
                 </div>
+              )}
+
+              {policy && (
+                <details className="pol">
+                  <summary>
+                    AP Resolution Policy {policy.version} · View Full Policy
+                  </summary>
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Action</th>
+                          <th>Use When</th>
+                          <th>Effect</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {policy.actions.map((a) => (
+                          <tr key={a.action} className={a.action === proposal?.action ? "hl" : undefined}>
+                            <td style={{ whiteSpace: "nowrap", fontWeight: 600 }}>{titleCase(a.action)}</td>
+                            <td>{a.useWhen}</td>
+                            <td>{a.effect}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
               )}
             </section>
 
@@ -390,16 +441,18 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                 </div>
                 <div className="ev">
                   {evidence.map((e) => {
-                    const { title, body } = describe(e);
+                    const { title, body } = describe(e, s, facts?.dueDate);
+                    const rel = e.relevance ? RELEVANCE[e.relevance] : undefined;
                     return (
                       <div key={e.ref}>
                         <div className="h">
                           <b>
                             <span className="cite">{e.ref}</span> {title}
                           </b>
-                          <span className="src">{citedRefs.has(e.ref) ? sourceLabel(e.source).split(" · ")[0] : "Not cited"}</span>
+                          {rel ? <span className={`tag ${rel[0]}`}>{rel[1]}</span> : <span className="src">{citedRefs.has(e.ref) ? "Cited" : "Not cited"}</span>}
                         </div>
                         <span>{body}</span>
+                        {e.relevanceNote && <span className="muted">Agent’s note: {e.relevanceNote}</span>}
                         <details>
                           <summary>Raw Output · {e.source}</summary>
                           <pre className="detail">{String(e.excerpt)}</pre>
@@ -432,6 +485,11 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
               </h2>
               <ul className="rules">
                 {routing && <li className="note">{routing}</li>}
+                {closing.map((r) => (
+                  <li key={r} className="note">
+                    {plain(r)}.
+                  </li>
+                ))}
                 {reasons.map((r) => (
                   <li key={r}>
                     <div>
@@ -449,6 +507,7 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                     </div>
                   </li>
                 ))}
+                {conflict && !reasons.some((r) => /does not fit the policy/.test(r)) && <li>{plain(`${proposal?.action} does not fit the policy: ${conflict.why}`)}.</li>}
                 {s.invoice && !s.invoice.containsInstructions && <li className="pass">Invoice text was screened for hidden instructions. Passed.</li>}
                 {s.invoice?.containsInstructions && <li>Instructions were found in the invoice: {s.invoice.instructionsSummary || "unspecified"}.</li>}
                 {proposal?.fraudFlag && <li>Possible fraud: {proposal.fraudReason || "flagged by the agent"}.</li>}
@@ -472,6 +531,12 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                 <dd>{usd(cost, 4)}</dd>
                 <dt>Review round</dt>
                 <dd>{s.round ?? 1}</dd>
+                {s.reviewer && (
+                  <>
+                    <dt>Reviewed by</dt>
+                    <dd>{s.reviewer}</dd>
+                  </>
+                )}
                 {Object.entries((s.skillVersions ?? {}) as Record<string, string>).map(([n, v]) => (
                   <Fragment key={n}>
                     <dt>{titleCase(n)}</dt>
@@ -514,15 +579,32 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
         </details>
       </main>
 
-      {summary.needsPerson && <ReviewBar workflowId={summary.workflowId} me={me} approveLabel={approveLabel} ifApprove={ifApprove} ifSendBack={ifSendBack} onChanged={onChanged} />}
+      {summary.needsPerson && (
+        <ReviewBar
+          key={`${summary.workflowId}/${s.draftVersion}`}
+          workflowId={summary.workflowId}
+          me={me}
+          approveLabel={approveLabel}
+          ifApprove={ifApprove}
+          ifSendBack={sendBackEffect(agent.name, Number(s.round ?? 1))}
+          ifEscalate={escalateEffect(summary.ref)}
+          conflictHint={conflict?.expected ? `The policy points to ${titleCase(conflict.expected)}: ${conflict.why}.` : undefined}
+          onChanged={onChanged}
+        />
+      )}
     </>
   );
 }
 
-function ageOf(timeline: AnyState[], startedAt: string): string {
-  const since = Date.parse(timeline.find((t) => t.state === "now")?.at ?? startedAt);
-  const m = Math.max(0, Math.round((Date.now() - since) / 60000));
-  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
+function Option({ kind, action, text, verdict, quoted }: { kind: string; action: string; text?: string; verdict?: "fits" | "conflict"; quoted?: boolean }) {
+  return (
+    <div className={`opt${verdict === "fits" ? " fits" : verdict === "conflict" ? " conflict" : ""}`}>
+      <span className="k">{kind}</span>
+      <b>{titleCase(action)}</b>
+      <span className="t">{text ? (quoted ? `“${text}”` : `Policy: ${text}`) : ""}</span>
+      <span className="v">{verdict === "fits" ? "✓ Fits" : verdict === "conflict" ? "✕ Does Not Fit" : ""}</span>
+    </div>
+  );
 }
 
 function Fact({ k, v }: { k: string; v: string }) {
@@ -544,24 +626,42 @@ function Bar({ base, over }: { base: number; over?: boolean }) {
   );
 }
 
-function ResearchCase({ detail, me, onChanged }: { detail: CaseDetail; me: string; onChanged: () => void }) {
+function ResearchCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDetail; agent: Agent; me: string; onBack: () => void; onChanged: () => void }) {
   const { summary } = detail;
   const s = detail.state!;
   const [tagClass, tagText] = caseTag(summary);
+  const timeline: AnyState[] = s.timeline ?? [];
+  const steps: Step[] = timeline.map((t, i) => {
+    const mine = t.state === "now" && summary.needsPerson;
+    return {
+      title: mine ? "Your Decision" : titleCase(t.name),
+      result: mine ? "The brief is not final until you approve" : plain(String(t.detail ?? "")),
+      time: stepTime(timeline as Array<{ at: string; state?: string }>, i),
+      now: t.state === "now",
+      detail: [
+        { label: "Recorded", body: <span>{clock(t.at)}</span> },
+        { label: "Result", body: <span>{plain(String(t.detail ?? "")) || "Done."}</span> },
+        { label: "Sources So Far", body: <span>{(s.sources ?? []).length}</span> },
+      ],
+    };
+  });
   return (
     <>
       <main className="page" aria-labelledby="case-h">
         <div className="dh">
-          <div>
+          <div className="row" style={{ alignItems: "center" }}>
             <span className={`tag ${tagClass}${summary.needsPerson ? " solid" : ""}`}>{summary.needsPerson ? "Needs Your Decision" : tagText}</span>
+            <BackLink agent={agent} onBack={onBack} />
           </div>
-          <h1 id="case-h">{summary.needsPerson ? `Approve this research brief?` : summary.title}</h1>
+          <h1 id="case-h">{summary.needsPerson ? "Approve this research brief?" : summary.title}</h1>
+          {!summary.needsPerson && summary.reason && <p className="why">{plain(summary.reason)}.</p>}
           <dl className="meta">
             <Fact k="Case" v={summary.ref || summary.workflowId} />
             <Fact k="Draft" v={`Version ${s.draftVersion ?? 0}`} />
             <Fact k="Sources" v={String((s.sources ?? []).length)} />
           </dl>
         </div>
+        <StepStrip steps={steps} />
         <section className="panel card">
           <h2 className="lab">Draft</h2>
           <p className="rec" style={{ whiteSpace: "pre-wrap" }}>

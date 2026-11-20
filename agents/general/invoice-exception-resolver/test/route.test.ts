@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkCitations, route, type MatchResult, type Proposal } from "../dist/index.js";
+import { checkCitations, holdReason, policyFit, route, type MatchResult, type Proposal } from "../dist/index.js";
 
 const match = (types: string[], fraud = false): MatchResult => ({
   invoiceId: "INV-1",
@@ -17,8 +17,17 @@ const proposal = (p: Partial<Proposal>): Proposal => ({
   fraudFlag: false,
   fraudReason: "",
   unconfirmed: "",
+  alternatives: [],
+  evidenceNotes: [],
   ...p,
 });
+/** A price finding: the contract price on file (null = none) and whether it supports the invoiced price. */
+const priced = (contractPriceCents: number | null, contractSupportsInvoice: boolean): MatchResult => ({
+  ...match(["price_variance"]),
+  findings: [{ code: "PRICE_VARIANCE", severity: "exception", lineNo: 1, message: "price", amountCents: 102_340, details: { poUnitPriceCents: 3365, invoicedUnitPriceCents: 3967, contractPriceCents, contractSupportsInvoice } }],
+});
+const accept = proposal({ exceptionType: "price_variance", action: "accept_variance" });
+const credit = proposal({ exceptionType: "price_variance", action: "request_credit_memo" });
 const adj = (amountCents: number) => ({ invoiceId: "INV-1", action: "accept_charge" as const, amountCents, payableCents: 0, basis: [] });
 
 describe("route", () => {
@@ -48,6 +57,46 @@ describe("route", () => {
   it("holds for credit memos and waits for receipts", () => {
     expect(route({ proposal: proposal({ exceptionType: "price_variance", action: "request_credit_memo" }), adjustment: adj(10_000), match: match(["price_variance"]), citationsValid: true })).toMatchObject({ path: "hold", invoiceStatus: "on_hold", message: { recipient: "vendor" } });
     expect(route({ proposal: proposal({ exceptionType: "no_receipt", action: "request_receipt_entry" }), adjustment: adj(0), match: match(["no_receipt"]), citationsValid: true })).toMatchObject({ path: "wait", message: { recipient: "receiving" } });
+  });
+});
+
+describe("policyFit", () => {
+  it("rejects accepting a variance the contract price does not support, and points to a credit memo", () => {
+    expect(policyFit(accept, priced(3365, false))).toEqual({ fits: false, expected: "request_credit_memo", why: "the invoiced price is above the contract price on file" });
+    expect(policyFit(accept, priced(3967, true))).toEqual({ fits: true });
+  });
+
+  it("points to escalation when there is no contract price on file", () => {
+    expect(policyFit(accept, priced(null, false))).toMatchObject({ fits: false, expected: "escalate" });
+    expect(policyFit(credit, priced(null, false))).toMatchObject({ fits: false, expected: "escalate" });
+  });
+
+  it("rejects a credit memo when the contract supports the invoice, and accepts one when it does not", () => {
+    expect(policyFit(credit, priced(3967, true))).toMatchObject({ fits: false, expected: "accept_variance" });
+    expect(policyFit(credit, priced(3365, false))).toEqual({ fits: true });
+  });
+
+  it("says nothing when no rule covers the action or there is no price finding", () => {
+    expect(policyFit(proposal({}), match(["unplanned_charge"]))).toBeUndefined();
+    expect(policyFit(proposal({ action: "short_pay" }), priced(3365, false))).toBeUndefined();
+  });
+
+  it("sends a conflict to a person and records the verdict on the route", () => {
+    const r = route({ proposal: credit, adjustment: adj(10_000), match: priced(3967, true), citationsValid: true });
+    expect(r).toMatchObject({ needsPerson: true, policyFit: { fits: false, expected: "accept_variance" } });
+    expect(r.reasons).toEqual(["request_credit_memo does not fit the policy: the contract price on the invoice date supports the invoiced price"]);
+  });
+
+  it("records the verdict without changing the path when the rule is not enforced (runs older than the rule)", () => {
+    const r = route({ proposal: credit, adjustment: adj(10_000), match: priced(3967, true), citationsValid: true }, undefined, { enforcePolicyFit: false });
+    expect(r).toMatchObject({ needsPerson: false, reasons: [], policyFit: { fits: false } });
+  });
+});
+
+describe("holdReason", () => {
+  it("says what a held invoice is waiting for", () => {
+    expect(holdReason({ message: { recipient: "vendor", purpose: "" } }, "request_credit_memo")).toMatch(/credit memo from the vendor/);
+    expect(holdReason({}, "escalate")).toMatch(/accounts payable specialist/);
   });
 });
 

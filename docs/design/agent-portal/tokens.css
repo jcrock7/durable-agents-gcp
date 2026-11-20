@@ -1,13 +1,14 @@
-/* Agent portal theme tokens (ADR-0021). Light is the default; set data-theme="dark" on the app root for dark. */
+/* Agent portal theme tokens (ADR-0021, amended 2026-11-20: --bar is now the neutral bar fill; --warn-fill and --crit were added). Light is the default; set data-theme="dark" on the app root for dark. */
 .app {
   --bg: #F2F4F7; --surface: #FFFFFF; --surface-2: #F7F8FA; --hover: #EEF1F4;
   --border: #DDE1E6; --border-strong: #C1C7CD;
   --text: #161B22; --text-2: #454C55; --text-3: #5A626C;
   --accent: #0B5CAD; --on-accent: #FFFFFF; --accent-weak: #E8F0FA; --link: #0B5CAD; --link-hover: #08467F;
-  --bar: #0B5CAD; --track: #E3E7EB;
+  --bar: #8FA3BF; --track: #E3E7EB;
   --ok: #1E7A34; --ok-bg: #EEF7F0; --ok-line: #B7DFC1;
   --info: #0B5CAD; --info-bg: #EDF3FB; --info-line: #B9D0EE;
-  --warn: #8F4C00; --warn-bg: #FDF4E7; --warn-line: #EDCB97;
+  --warn: #8F4C00; --warn-bg: #FDF4E7; --warn-line: #EDCB97; --warn-fill: #E39A1B;
+  --crit: #A8281F; --crit-bg: #FBE9E7;
   --idle: #454C55; --idle-bg: #F2F4F6; --idle-line: #D5D9DE;
   --side-bg: #161B22; --side-line: #2C333C; --side-sel: #2C333C;
   --scrim: rgba(13, 17, 23, 0.55);
@@ -22,10 +23,11 @@
   --border: #2B323C; --border-strong: #3D4652;
   --text: #E6E9ED; --text-2: #B4BCC6; --text-3: #9AA4AF;
   --accent: #6CA8F0; --on-accent: #0E1116; --accent-weak: #16263A; --link: #86B8F4; --link-hover: #AFD0F8;
-  --bar: #6CA8F0; --track: #2B323C;
+  --bar: #5D6F8A; --track: #2B323C;
   --ok: #6DD58C; --ok-bg: #12251A; --ok-line: #25553A;
   --info: #8CBDF7; --info-bg: #142338; --info-line: #2A4A72;
-  --warn: #F2B45A; --warn-bg: #2B2013; --warn-line: #6B4A1C;
+  --warn: #F2B45A; --warn-bg: #2B2013; --warn-line: #6B4A1C; --warn-fill: #E39A1B;
+  --crit: #F0958C; --crit-bg: #331613;
   --idle: #B4BCC6; --idle-bg: #1F252D; --idle-line: #3A424D;
   --side-bg: #090C10; --side-line: #232A33; --side-sel: #232A33;
   --scrim: rgba(0, 0, 0, 0.65);

@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -13,6 +14,10 @@ export interface AppDeps {
   webDir?: string;
   /** Who is signed in, when there is no identity header (local development). */
   localUser?: string;
+  /** Where each agent's skills live: <skillsDir>/<agentId>/<skill>/SKILL.md. */
+  skillsDir?: string;
+  /** What one case costs to work by hand (USD), for the comparison on the overview. Unset: not shown. */
+  manualCostPerCaseUsd?: number;
 }
 
 /** One row in a case list, the same shape for every agent. */
@@ -29,9 +34,59 @@ export interface CaseSummary {
   closedAt?: string;
   costUsd: number;
   detail: string;
+  /** Why the case stands where it does, in a sentence; empty when the detail already says it. */
+  reason?: string;
+  /** The money the proposed action moves, in cents. */
+  amountCents?: number;
+  vendorName?: string;
+}
+
+/** Invoice facts for the case page. "erp" when the workflow recorded them; "derived" for runs from before it did. */
+export interface CaseFacts {
+  source: "erp" | "derived";
+  vendorName?: string;
+  dueDate?: string;
+  lines: Array<{ lineNo: number; itemId?: string; description?: string; quantity?: number; uom?: string; unitPriceCents?: number }>;
 }
 
 type AnyState = Record<string, any>;
+
+/**
+ * The facts the case page shows. Runs that recorded them (CaseState.facts) are passed through. Older runs
+ * did not, so for those the vendor and due date are read from the invoice text the run kept as evidence
+ * and the quantity from the match engine's figures. Kept here so the browser never parses documents.
+ */
+export function factsOf(state: AnyState | undefined): CaseFacts | undefined {
+  if (!state) return undefined;
+  if (state.facts) return { source: "erp", vendorName: state.facts.vendorName, dueDate: state.facts.dueDate, lines: state.facts.lines ?? [] };
+  const pdf = String((state.evidence ?? []).find((e: AnyState) => String(e.source).startsWith("docs:"))?.excerpt ?? "");
+  if (!pdf) return undefined;
+  const lines = (state.match?.findings ?? [])
+    .filter((f: AnyState) => f.lineNo != null && f.details?.invoicedUnitPriceCents > f.details?.poUnitPriceCents && f.amountCents)
+    .map((f: AnyState) => {
+      const q = f.amountCents / (f.details.invoicedUnitPriceCents - f.details.poUnitPriceCents);
+      return { lineNo: Number(f.lineNo), quantity: Math.abs(q - Math.round(q)) < 0.01 ? Math.round(q) : undefined, unitPriceCents: f.details.invoicedUnitPriceCents };
+    });
+  return { source: "derived", vendorName: pdf.split("\n")[0]?.trim() || undefined, dueDate: /Due date:\s*(\d{4}-\d{2}-\d{2})/i.exec(pdf)?.[1], lines };
+}
+
+export interface SkillActions {
+  name: string;
+  version: string;
+  actions: Array<{ action: string; useWhen: string; effect: string }>;
+}
+
+/** The action table of a SKILL.md: rows of | `action` | use when | effect |. */
+export function parseSkill(markdown: string): SkillActions | undefined {
+  const text = markdown.replace(/\r\n/g, "\n");
+  const front = /^---\n([\s\S]*?)\n---/.exec(text)?.[1] ?? "";
+  const name = /^name:\s*(.+)$/m.exec(front)?.[1]?.trim();
+  const version = /^version:\s*"?([^"\n]+)"?$/m.exec(front)?.[1]?.trim();
+  if (!name || !version) return undefined;
+  const clean = (s: string) => s.replace(/\*\*/g, "").replace(/`/g, "").trim();
+  const actions = [...text.matchAll(/^\|\s*`([a-z_]+)`\s*\|([^|]*)\|([^|]*)\|\s*$/gm)].map((m) => ({ action: m[1]!, useWhen: clean(m[2]!), effect: clean(m[3]!) }));
+  return { name, version, actions };
+}
 const ID = /^[a-z0-9][a-z0-9-]{0,80}$/;
 
 /** IAP puts the signed-in user in x-goog-authenticated-user-email ("accounts.google.com:me@x"). */
@@ -40,7 +95,7 @@ export function identity(req: FastifyRequest, fallback = "local-user"): string {
   return typeof h === "string" && h ? h.replace(/^accounts\.google\.com:/, "") : fallback;
 }
 
-export function summarize(agent: AgentEntry, run: RunInfo, state: AnyState | undefined): CaseSummary {
+export function summarize(agent: AgentEntry, run: RunInfo, state: AnyState | undefined, ended?: { reason?: string; identity?: string }): CaseSummary {
   const temporalStatus = run.status;
   const base = { workflowId: run.workflowId, agentId: agent.id, temporalStatus, startedAt: run.startTime, closedAt: run.closeTime };
   if (!state) {
@@ -48,9 +103,11 @@ export function summarize(agent: AgentEntry, run: RunInfo, state: AnyState | und
   }
   const cost = Array.isArray(state.usage) ? state.usage.reduce((s: number, u: AnyState) => s + (u.costUsd ?? 0), 0) : 0;
   const stopped = temporalStatus !== "RUNNING" && temporalStatus !== "COMPLETED";
+  const stoppedReason = stopped ? `${temporalStatus === "TERMINATED" || temporalStatus === "CANCELED" ? "Cancelled" : "Stopped"}${ended?.identity ? ` by ${ended.identity}` : ""}: ${ended?.reason || "no reason recorded"}` : undefined;
   if (agent.id === "research-summarize") {
     return {
       ...base,
+      reason: stoppedReason,
       ref: run.workflowId,
       title: String(state.question ?? state.draft?.summary?.slice(0, 60) ?? run.workflowId),
       stage: stopped ? temporalStatus.toLowerCase() : String(state.stage),
@@ -62,8 +119,12 @@ export function summarize(agent: AgentEntry, run: RunInfo, state: AnyState | und
   }
   const type = state.proposal?.exceptionType ?? state.match?.exceptionTypes?.[0] ?? "exception";
   const last = Array.isArray(state.timeline) ? state.timeline.at(-1) : undefined;
+  const reasons: string[] = (state.status ? state.reasons : state.route?.reasons) ?? [];
   return {
     ...base,
+    reason: stoppedReason ?? (reasons.length ? reasons.join("; ") : undefined),
+    amountCents: typeof state.adjustment?.amountCents === "number" ? state.adjustment.amountCents : undefined,
+    vendorName: factsOf(state)?.vendorName,
     ref: String(state.invoiceId ?? run.workflowId),
     title: `${state.invoiceId ?? run.workflowId} · ${String(type).replace(/_/g, " ")}`,
     stage: stopped ? temporalStatus.toLowerCase() : String(state.stage),
@@ -95,6 +156,22 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     return value;
   }
 
+  // Why a stopped run stopped: read once from its history, then kept (a closed run never changes).
+  const endings = new Map<string, { reason?: string; identity?: string } | undefined>();
+  async function endingOf(run: RunInfo): Promise<{ reason?: string; identity?: string } | undefined> {
+    if (run.status === "RUNNING" || run.status === "COMPLETED" || !temporal.termination) return undefined;
+    const key = `${run.workflowId}/${run.runId}`;
+    if (!endings.has(key)) {
+      try {
+        endings.set(key, await temporal.termination(run.workflowId, run.runId));
+      } catch {
+        return undefined; // try again next time
+      }
+      if (endings.size > 2_000) endings.delete(endings.keys().next().value!);
+    }
+    return endings.get(key);
+  }
+
   async function casesOf(agent: AgentEntry, limit = 40): Promise<Array<{ summary: CaseSummary; state?: AnyState }>> {
     if (!agent.built) return [];
     const listed = await temporal.listRuns(`WorkflowType = '${agent.caseType}' AND WorkflowId STARTS_WITH '${agent.casePrefix}'`, limit * 3);
@@ -107,10 +184,25 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const runs = [...newest.values()].sort((a, b) => b.startTime.localeCompare(a.startTime)).slice(0, limit);
     return Promise.all(
       runs.map(async (run) => {
-        const state = await stateOf(agent, run);
-        return { summary: summarize(agent, run, state), state };
+        const [state, ended] = await Promise.all([stateOf(agent, run), endingOf(run)]);
+        return { summary: summarize(agent, run, state, ended), state };
       }),
     );
+  }
+
+  const skillCache = new Map<string, SkillActions | undefined>();
+  function skillOf(agentId: string, name: string): SkillActions | undefined {
+    const key = `${agentId}/${name}`;
+    if (!skillCache.has(key)) {
+      let parsed: SkillActions | undefined;
+      try {
+        if (deps.skillsDir) parsed = parseSkill(readFileSync(join(deps.skillsDir, agentId, name, "SKILL.md"), "utf8"));
+      } catch {
+        parsed = undefined;
+      }
+      skillCache.set(key, parsed);
+    }
+    return skillCache.get(key);
   }
 
   const spendByAlias = async () => {
@@ -123,7 +215,38 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   app.get("/healthz", async () => ({ ok: true }));
 
-  app.get("/api/me", async (req) => ({ user: identity(req, deps.localUser) }));
+  app.get("/api/me", async (req) => ({ user: identity(req, deps.localUser), source: req.headers["x-goog-authenticated-user-email"] ? "iap" : "local" }));
+
+  /** A skill's action table, for the version on disk. 404 when the run used another version: the portal then shows nothing. */
+  app.get<{ Params: { id: string; name: string }; Querystring: { version?: string } }>("/api/agents/:id/skills/:name", async (req, reply) => {
+    const agent = agentById(req.params.id);
+    if (!agent || !ID.test(req.params.name)) return reply.code(404).send({ error: "no such skill" });
+    const skill = skillOf(agent.id, req.params.name);
+    if (!skill || (req.query.version && req.query.version !== skill.version)) return reply.code(404).send({ error: "no such skill version" });
+    return skill;
+  });
+
+  /** Case history across agents: search by reference or vendor, sort, and page. */
+  const CasesQuery = z.object({
+    agent: z.string().regex(ID).optional(),
+    q: z.string().max(100).optional(),
+    sort: z.enum(["age", "amount", "cost"]).default("age"),
+    dir: z.enum(["asc", "desc"]).default("desc"),
+    offset: z.coerce.number().int().min(0).default(0),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+  });
+  app.get("/api/cases", async (req, reply) => {
+    const query = CasesQuery.safeParse(req.query);
+    if (!query.success) return reply.code(400).send({ error: "invalid query" });
+    const { agent: agentId, q, sort, dir, offset, limit } = query.data;
+    const agents = AGENTS.filter((a) => a.built && (!agentId || a.id === agentId));
+    const all = (await Promise.all(agents.map((a) => casesOf(a, 500).catch(() => [])))).flat().map((c) => c.summary);
+    const needle = q?.trim().toLowerCase();
+    const found = needle ? all.filter((c) => [c.ref, c.workflowId, c.title, c.vendorName ?? ""].some((v) => v.toLowerCase().includes(needle))) : all;
+    const key = (c: CaseSummary) => (sort === "amount" ? Math.abs(c.amountCents ?? 0) : sort === "cost" ? c.costUsd : Date.parse(c.startedAt));
+    found.sort((x, y) => (dir === "asc" ? key(x) - key(y) : key(y) - key(x)));
+    return { total: found.length, offset, cases: found.slice(offset, offset + limit) };
+  });
 
   /** Every agent, with live figures for the built ones. */
   app.get("/api/agents", async () => {
@@ -165,17 +288,22 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (!agent?.built) return reply.code(404).send({ error: "no such case" });
     const [run] = await temporal.listRuns(`WorkflowId = '${workflowId}'`, 1);
     if (!run) return reply.code(404).send({ error: "no such case" });
-    const state = await stateOf(agent, run);
-    return { agentId: agent.id, summary: summarize(agent, run, state), state: state ?? null };
+    const [state, ended] = await Promise.all([stateOf(agent, run), endingOf(run)]);
+    return { agentId: agent.id, summary: summarize(agent, run, state, ended), state: state ?? null, facts: factsOf(state) ?? null };
   });
 
-  const ReviewBody = z.object({ approved: z.boolean(), feedback: z.string().max(2_000).optional() });
+  const ReviewBody = z.union([
+    z.object({ approved: z.boolean(), feedback: z.string().max(2_000).optional() }),
+    z.object({ escalate: z.object({ note: z.string().trim().min(1).max(2_000) }).strict() }),
+  ]);
   app.post<{ Params: { workflowId: string } }>("/api/cases/:workflowId/review", async (req, reply) => {
     const { workflowId } = req.params;
     const body = ReviewBody.safeParse(req.body);
     if (!ID.test(workflowId) || !agentForWorkflow(workflowId)?.built || !body.success) return reply.code(400).send({ error: "invalid review" });
     try {
-      const ack = await temporal.update(workflowId, "review", { ...body.data, reviewer: identity(req, deps.localUser) });
+      // An escalation is neither an approval nor a send-back; the workflow reads the note.
+      const decision = "escalate" in body.data ? { approved: false, escalate: body.data.escalate } : body.data;
+      const ack = await temporal.update(workflowId, "review", { ...decision, reviewer: identity(req, deps.localUser) });
       cache.clear();
       return ack;
     } catch (error) {
@@ -235,6 +363,30 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     events.sort((x, y) => y.at.localeCompare(x.at));
 
     const keys = built.map((a) => (a.keyAlias ? spend.get(a.keyAlias) : undefined)).filter(Boolean);
+
+    // Business figures over the cases loaded above. Every figure is a sum or a median of real cases.
+    const inv = all.filter((c) => c.agent.id === "invoice-exception-resolver" && c.state);
+    const closed = inv.filter((c) => c.summary.temporalStatus === "COMPLETED");
+    const toProposal = inv
+      .map((c) => {
+        const t: AnyState[] = c.state!.timeline ?? [];
+        const at = t.find((e) => /^propose/i.test(String(e.name)))?.at;
+        return at && t[0] ? (Date.parse(at) - Date.parse(t[0].at)) / 1000 : NaN;
+      })
+      .filter((n) => Number.isFinite(n))
+      .sort((x, y) => x - y);
+    const started = inv.filter((c) => c.summary.costUsd > 0);
+    const costPerCase = started.length ? started.reduce((s, c) => s + c.summary.costUsd, 0) / started.length : null;
+    const value = {
+      cases: inv.length,
+      awaitingDecisionCents: inv.filter((c) => c.summary.needsPerson).reduce((s, c) => s + Math.abs(c.summary.amountCents ?? 0), 0),
+      invoiceValueProcessedCents: closed.reduce((s, c) => s + (c.state!.match?.totals?.invoiceCents ?? 0), 0),
+      closed: closed.length,
+      closedWithoutPerson: closed.filter((c) => !c.state!.reviewer).length,
+      medianSecondsToProposal: toProposal.length ? toProposal[Math.floor((toProposal.length - 1) / 2)]! : null,
+      costPerCaseUsd: costPerCase,
+      manualCostPerCaseUsd: deps.manualCostPerCaseUsd ?? null,
+    };
     return {
       platform: [
         { name: "Temporal", ok: temporalOk },
@@ -257,6 +409,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         .sort((x, y) => y.startedAt.localeCompare(x.startedAt))
         .slice(0, 25),
       events: events.slice(0, 15),
+      value,
       servers: MCP_SERVERS.map((s) => ({ ...s, ...(servers.find((d) => d.name === s.name) ?? { ready: 0, replicas: 0 }) })),
     };
   });

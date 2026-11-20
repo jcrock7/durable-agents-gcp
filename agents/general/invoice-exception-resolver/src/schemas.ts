@@ -17,6 +17,9 @@ export type Action = (typeof ACTIONS)[number];
 export const EXCEPTION_TYPES = ["price_variance", "quantity_variance", "uom_mismatch", "unplanned_charge", "no_receipt", "duplicate", "wrong_po"] as const;
 export type ExceptionType = (typeof EXCEPTION_TYPES)[number];
 
+export const RELEVANCE = ["supports", "contradicts", "not_applicable"] as const;
+export type Relevance = (typeof RELEVANCE)[number];
+
 /** What the fast model reads off the vendor's invoice PDF. */
 export const InvoiceFieldsSchema = z.object({
   vendorInvoiceNumber: z.string().describe("The vendor's invoice number as printed"),
@@ -40,6 +43,21 @@ export const ProposalSchema = z.object({
   fraudFlag: z.boolean(),
   fraudReason: z.string().describe("Why, if fraudFlag is true; empty otherwise"),
   unconfirmed: z.string().describe("What could not be confirmed; empty if nothing"),
+  alternatives: z
+    .array(z.object({ action: z.enum(ACTIONS), whyNot: z.string().describe("One sentence: why this action fits the evidence less well") }))
+    .max(2)
+    .default([])
+    .describe("Up to two other actions you weighed and why each fits the evidence less well; empty if none came close"),
+  evidenceNotes: z
+    .array(
+      z.object({
+        ref: z.string().describe("Evidence reference, for example E5"),
+        relevance: z.enum(RELEVANCE),
+        note: z.string().describe("One short sentence, for example: covers ITM-1187, a different item"),
+      }),
+    )
+    .default([])
+    .describe("For each evidence item that matters to the decision or could mislead a reviewer: whether it supports the action, contradicts it, or does not apply to this invoice"),
 });
 export type Proposal = z.infer<typeof ProposalSchema>;
 

@@ -20,6 +20,8 @@ export interface TemporalSource {
   update<T>(workflowId: string, name: string, arg: unknown): Promise<T>;
   signal(workflowId: string, name: string, arg: unknown): Promise<void>;
   start(type: string, taskQueue: string, workflowId: string, arg: unknown): Promise<void>;
+  /** Why and by whom a run was terminated or cancelled, from its last history event. */
+  termination?(workflowId: string, runId: string): Promise<{ reason?: string; identity?: string } | undefined>;
   healthy(): Promise<boolean>;
 }
 
@@ -91,6 +93,14 @@ export async function temporalSource(address: string, namespace = "default"): Pr
     },
     async start(type, taskQueue, workflowId, arg) {
       await (await get()).workflow.start(type, { taskQueue, workflowId, args: [arg] });
+    },
+    async termination(workflowId, runId) {
+      const history = await withTimeout((await get()).workflow.getHandle(workflowId, runId).fetchHistory(), 5_000, `history of ${workflowId}`);
+      const last = history.events?.at(-1);
+      const t = last?.workflowExecutionTerminatedEventAttributes;
+      if (t) return { reason: t.reason || undefined, identity: t.identity || undefined };
+      const c = last?.workflowExecutionCanceledEventAttributes;
+      return c ? {} : undefined;
     },
     async healthy() {
       try {

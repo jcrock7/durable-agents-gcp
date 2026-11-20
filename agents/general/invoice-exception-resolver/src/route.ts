@@ -2,7 +2,7 @@
 // code over config values; the model proposes, these rules decide (ADR-0020).
 import { agentConfig } from "./agent.config.js";
 import type { Action, Proposal } from "./schemas.js";
-import type { Adjustment, MatchResult, RouteDecision } from "./types.js";
+import type { Adjustment, MatchResult, PolicyFit, RouteDecision } from "./types.js";
 
 type Policy = Pick<typeof agentConfig, "approval">;
 
@@ -19,6 +19,34 @@ const PATHS: Record<Action, Pick<RouteDecision, "path" | "invoiceStatus" | "mess
   escalate: { path: "escalate", invoiceStatus: "on_hold" },
 };
 
+/**
+ * Does the proposed action fit the policy (ap-resolution-policy)? Only for actions the match engine's
+ * findings can settle; undefined otherwise. Plain code: the model has no say in this.
+ */
+export function policyFit(proposal: Pick<Proposal, "action">, match: MatchResult): PolicyFit | undefined {
+  const price = match.findings.filter((f) => f.code === "PRICE_VARIANCE" && f.details);
+  if (price.length === 0) return undefined;
+  const noContract = price.some((f) => f.details!.contractPriceCents == null);
+  const unsupported = price.some((f) => f.details!.contractPriceCents != null && f.details!.contractSupportsInvoice === false);
+  const supported = price.every((f) => f.details!.contractSupportsInvoice === true);
+  if (proposal.action === "accept_variance") {
+    if (unsupported) return { fits: false, expected: "request_credit_memo", why: "the invoiced price is above the contract price on file" };
+    if (noContract) return { fits: false, expected: "escalate", why: "there is no contract price on file for the item" };
+    return { fits: true };
+  }
+  if (proposal.action === "request_credit_memo") {
+    if (supported) return { fits: false, expected: "accept_variance", why: "the contract price on the invoice date supports the invoiced price" };
+    if (noContract && !unsupported) return { fits: false, expected: "escalate", why: "there is no contract price on file for the item" };
+    return { fits: true };
+  }
+  return undefined;
+}
+
+export interface RouteOptions {
+  /** Let a policy conflict send the case to a person. Off only when replaying runs that started before the rule existed. */
+  enforcePolicyFit?: boolean;
+}
+
 export interface RouteInput {
   proposal: Proposal;
   adjustment: Adjustment;
@@ -26,7 +54,7 @@ export interface RouteInput {
   citationsValid: boolean;
 }
 
-export function route({ proposal, adjustment, match, citationsValid }: RouteInput, policy: Policy = agentConfig): RouteDecision {
+export function route({ proposal, adjustment, match, citationsValid }: RouteInput, policy: Policy = agentConfig, { enforcePolicyFit = true }: RouteOptions = {}): RouteDecision {
   const fraudSignals = match.findings.filter((f) => f.severity === "fraud_signal").map((f) => f.message);
   if (proposal.fraudFlag || fraudSignals.length > 0) {
     return {
@@ -53,7 +81,16 @@ export function route({ proposal, adjustment, match, citationsValid }: RouteInpu
   if (match.exceptionTypes.length > 0 && !match.exceptionTypes.includes(proposal.exceptionType)) {
     reasons.push(`classified as ${proposal.exceptionType}, but the match engine found ${match.exceptionTypes.join(", ")}`);
   }
-  return { ...PATHS[proposal.action], needsPerson: reasons.length > 0, reasons };
+  const fit = policyFit(proposal, match);
+  if (fit && !fit.fits && enforcePolicyFit) reasons.push(`${proposal.action} does not fit the policy: ${fit.why}`);
+  return { ...PATHS[proposal.action], needsPerson: reasons.length > 0, reasons, ...(fit ? { policyFit: fit } : {}) };
+}
+
+/** Why an invoice is on hold after a resolution was recorded, and what releases it. */
+export function holdReason(decision: Pick<RouteDecision, "message">, action: string): string {
+  if (action === "request_credit_memo") return "waiting for a credit memo from the vendor; released when the credit is recorded";
+  if (decision.message) return `waiting on the ${decision.message.recipient}; released when they reply and a person re-checks`;
+  return "held by the resolution; released by an accounts payable specialist";
 }
 
 /** Evidence references in the rationale and the cited list, and whether they all exist. */

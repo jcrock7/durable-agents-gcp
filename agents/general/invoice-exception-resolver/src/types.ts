@@ -1,6 +1,6 @@
 // Plain data shared by workflow code, activities and clients. No imports with side effects.
 import type { ToolCallRecord } from "@agents/agent-kit";
-import type { Action, InvoiceFields, MessageDraft, Proposal } from "./schemas.js";
+import type { Action, InvoiceFields, MessageDraft, Proposal, Relevance } from "./schemas.js";
 
 export type { ToolCallRecord };
 
@@ -38,6 +38,26 @@ export interface Evidence {
   args: Record<string, unknown>;
   /** The result, cut to a readable length. */
   excerpt: string;
+  /** How the proposal's author read this item, when it said so. The agent's account, not a rule. */
+  relevance?: Relevance;
+  relevanceNote?: string;
+}
+
+/** Whether the proposed action fits the policy, decided by plain rules over the match engine's findings. */
+export interface PolicyFit {
+  fits: boolean;
+  /** The action the policy points to instead, when it does not fit. */
+  expected?: Action;
+  why?: string;
+}
+
+/** Structured invoice facts from the ERP, for the portal. */
+export interface InvoiceFacts {
+  vendorId: string;
+  vendorName?: string;
+  dueDate?: string;
+  totalCents?: number;
+  lines: Array<{ lineNo: number; itemId?: string; description?: string; quantity?: number; uom?: string; unitPriceCents?: number }>;
 }
 
 export interface Usage {
@@ -58,6 +78,8 @@ export interface RouteDecision {
   reasons: string[];
   message?: { recipient: Recipient; purpose: string };
   invoiceStatus: "resolved" | "on_hold";
+  /** Present when a rule could settle it; absent when no rule covers the action. */
+  policyFit?: PolicyFit;
 }
 
 export type CaseStatus = "resolved" | "on_hold" | "escalated" | "rejected_by_reviewer" | "blocked" | "expired";
@@ -90,6 +112,7 @@ export interface CaseState {
   reasons: string[];
   match?: MatchResult;
   invoice?: InvoiceFields;
+  facts?: InvoiceFacts;
   evidence: Evidence[];
   notes?: string;
   proposal?: Proposal;

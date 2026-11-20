@@ -33,7 +33,7 @@ import {
 } from "./prompts/index.js";
 import { checkCitations } from "./route.js";
 import { InvoiceFieldsSchema, MessageSchema, ProposalSchema, type Action, type InvoiceFields, type MessageDraft, type Proposal } from "./schemas.js";
-import type { Adjustment, Evidence, MatchResult, Recipient, Usage } from "./types.js";
+import type { Adjustment, Evidence, InvoiceFacts, MatchResult, Recipient, Usage } from "./types.js";
 
 const EXCERPT_CHARS = 1_500;
 const RECEIVING_ADDRESS = "receiving@company.example";
@@ -109,6 +109,22 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
           const [invoice] = rows(await call(t, "erp-read:get_invoice", { invoice_id: input.invoiceId }, "activity"));
           if (!invoice) throw new Error(`invoice ${input.invoiceId} not found`);
           const text = resultText(await call(t, "docs:read_pdf_text", { path: String(invoice.document_path) }, "activity"), 20_000);
+          const [vendor] = rows(await call(t, "erp-read:get_vendor", { vendor_id: String(invoice.vendor_id) }, "activity"));
+          const num = (v: unknown) => (v == null || Number.isNaN(Number(v)) ? undefined : Number(v));
+          const facts: InvoiceFacts = {
+            vendorId: String(invoice.vendor_id),
+            vendorName: vendor?.name ? String(vendor.name) : undefined,
+            dueDate: invoice.due_date ? String(invoice.due_date).slice(0, 10) : undefined,
+            totalCents: num(invoice.total_cents),
+            lines: (Array.isArray(invoice.lines) ? (invoice.lines as Array<Record<string, unknown>>) : []).map((l) => ({
+              lineNo: Number(l.line_no),
+              itemId: l.item_id ? String(l.item_id) : undefined,
+              description: l.description ? String(l.description) : undefined,
+              quantity: num(l.quantity),
+              uom: l.uom ? String(l.uom) : undefined,
+              unitPriceCents: num(l.unit_price_cents),
+            })),
+          };
           const skill = await skills(["untrusted-content"]);
           const { output, usage, response } = await withHeartbeat((abortSignal) =>
             generateText({
@@ -125,6 +141,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
             text,
             documentPath: String(invoice.document_path),
             record: { vendorId: String(invoice.vendor_id), poId: String(invoice.po_id) },
+            facts,
             skillVersions: skill.versions,
             usage: usageOf("read invoice", agentConfig.models.extract, usage, gatewayCostUsd(response.headers)),
           };

@@ -20,6 +20,8 @@ RUN pnpm exec tsc -b apps/api && pnpm --filter @agents/web build
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store \
     pnpm --filter @agents/api deploy --prod --legacy --store-dir /pnpm-store /out
 RUN cp -r apps/web/dist /out/web
+# The agents' skills, so the portal can quote the policy a run used: /app/skills/<agentId>/<skill>/SKILL.md
+RUN mkdir -p /out/skills && for d in agents/*/*/skills; do cp -r "$d" "/out/skills/$(basename "$(dirname "$d")")"; done
 
 # ---------- runtime ----------
 FROM ${NODE_IMAGE}

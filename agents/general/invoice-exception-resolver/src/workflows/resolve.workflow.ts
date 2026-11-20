@@ -1,9 +1,9 @@
-import { ApplicationFailure, condition, getExternalWorkflowHandle, proxyActivities, setHandler, workflowInfo } from "@temporalio/workflow";
+import { ApplicationFailure, condition, getExternalWorkflowHandle, patched, proxyActivities, setHandler, workflowInfo } from "@temporalio/workflow";
 import { FailureType, MODEL_CALL_OPTIONS, ReviewGate, TOOL_CALL_OPTIONS, failureTypeOf } from "@agents/agent-kit/workflow";
 import type { Activities } from "../activities.js";
 import { agentConfig } from "../agent.config.js";
 import { PROMPT_VERSION } from "../prompts/index.js";
-import { route } from "../route.js";
+import { holdReason, route } from "../route.js";
 import { ResolveInputSchema, type ResolveInput } from "../schemas.js";
 import { caseSettledSignal, caseStateQuery, recheckSignal } from "../signals.js";
 import type { CaseResult, CaseState, CaseStatus, Evidence, Stage, ToolCallRecord, Usage } from "../types.js";
@@ -51,7 +51,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
     recheck = true;
     step("Re-check requested", reason);
   });
-  const review = new ReviewGate();
+  const review = new ReviewGate({ allowEscalate: true });
   let humanTouches = 0;
 
   function step(name: string, detail = "", s: "done" | "now" | "error" = "done") {
@@ -132,6 +132,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
         const read = await readInvoice({ invoiceId: input.invoiceId });
         record(read);
         state.invoice = read.fields;
+        state.facts = read.facts;
         invoiceText = read.text;
         documentPath = read.documentPath;
         erpRecord = read.record;
@@ -157,13 +158,20 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
         record(proposed);
         state.proposal = proposed.proposal;
         state.citationsValid = proposed.citationsValid;
+        // The proposal's own reading of each evidence item, shown beside it in the portal.
+        const notes = new Map((proposed.proposal.evidenceNotes ?? []).map((n) => [n.ref.replace(/[[\]\s]/g, ""), n]));
+        state.evidence = state.evidence.map((e) => {
+          const n = notes.get(e.ref);
+          return n ? { ...e, relevance: n.relevance, relevanceNote: n.note } : { ...e, relevance: undefined, relevanceNote: undefined };
+        });
         state.draftVersion += 1;
         step(revision ? "Revise proposal" : "Propose resolution", `${proposed.proposal.action} (${proposed.proposal.confidence})`);
 
         const adj = await computeAdjustment({ invoiceId: input.invoiceId, action: proposed.proposal.action });
         record(adj);
         state.adjustment = adj.adjustment;
-        const decision = route({ proposal: proposed.proposal, adjustment: adj.adjustment, match, citationsValid: proposed.citationsValid });
+        // The policy-fit verdict is always recorded; it only changes the path for runs started after the rule shipped.
+        const decision = route({ proposal: proposed.proposal, adjustment: adj.adjustment, match, citationsValid: proposed.citationsValid }, agentConfig, { enforcePolicyFit: patched("policy-fit-rule") });
         state.route = decision;
         step("Route", `${decision.path}${decision.needsPerson ? ` → person: ${decision.reasons.join("; ")}` : ""}`);
 
@@ -177,6 +185,10 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
         if (!verdict) return holdAndFinish("expired", [`no review within ${REVIEW_TIMEOUT}`]);
         humanTouches += 1;
         state.reviewer = verdict.reviewer;
+        if (verdict.escalate) {
+          step("Escalated by reviewer", verdict.escalate.note);
+          return holdAndFinish("escalated", [verdict.escalate.note, `escalated by ${verdict.reviewer ?? "a reviewer"}`]);
+        }
         if (verdict.approved) {
           step("Approved", verdict.reviewer ?? "");
           break;
@@ -228,7 +240,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
         if (confirmed.status !== decision.invoiceStatus) {
           return finish("escalated", [`expected the invoice to be ${decision.invoiceStatus}, the ERP shows ${confirmed.status}`]);
         }
-        return finish(decision.invoiceStatus === "on_hold" ? "on_hold" : "resolved");
+        return decision.invoiceStatus === "on_hold" ? finish("on_hold", [holdReason(decision, proposal.action)]) : finish("resolved");
       }
 
       // Wait for the receipt: hold, re-match daily (or on a recheck signal), remind, escalate.

@@ -207,6 +207,9 @@ export function generateErp(seed = 20931): ErpData {
   const labels: Label[] = [];
   const hiddenTextInvoices: string[] = [];
   const used = new Set<string>();
+  // Items whose contract prices a scenario changes or removes. Price scenarios never share an item,
+  // so one case's contract change can't contradict another case's label.
+  const touchedItems = new Set<string>();
   const linesOf = (invoiceId: string) => invoiceLines.filter((l) => l.invoiceId === invoiceId);
   const poLineOf = (poId: string, lineNo: number) => poLines.find((l) => l.poId === poId && l.lineNo === lineNo)!;
   const receiptOf = (poId: string) => receipts.find((g) => g.poId === poId);
@@ -222,12 +225,15 @@ export function generateErp(seed = 20931): ErpData {
     if (po && label.scenario !== "duplicate_resent") po.status = "open";
     labels.push({ exceptionId: ex.id, invoiceId: inv.id, ...label });
   };
-  /** An unpaid invoice not yet used by another scenario, meeting a condition. */
+  /** An unpaid invoice not yet used by another scenario, meeting a condition, whose first item no price scenario has touched. */
   const take = (ok: (inv: Invoice) => boolean): Invoice => {
-    const pool = invoices.filter((inv) => inv.status === "matched" && !used.has(inv.id) && inv.id !== DEMO_INVOICE_ID && ok(inv));
+    const pool = invoices.filter(
+      (inv) => inv.status === "matched" && !used.has(inv.id) && inv.id !== DEMO_INVOICE_ID && !touchedItems.has(linesOf(inv.id)[0]!.itemId ?? "") && ok(inv),
+    );
     if (pool.length === 0) throw new Error("synthetic ERP: no invoice left for a scenario; adjust SCENARIO_COUNTS");
     const inv = r.pick(pool);
     used.add(inv.id);
+    touchedItems.add(linesOf(inv.id)[0]!.itemId ?? "");
     return inv;
   };
   const changePrice = (itemId: string, newPrice: number): ContractPrice => {
@@ -263,6 +269,7 @@ export function generateErp(seed = 20931): ErpData {
     poLine.quantity = 1200;
     receiptLines.filter((g) => g.receiptId === receipt.id && g.poLineNo === poLine.lineNo).forEach((g) => (g.quantity = 1200));
     const row = changePrice(line.itemId!, 399);
+    touchedItems.add(line.itemId!);
     line.quantity = 1200;
     line.unitPriceCents = 399;
     recompute(demo);

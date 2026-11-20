@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { log } from "@temporalio/activity";
 import {
   connectHttp,
+  gatewayCostUsd,
   loadSkills,
   MODEL_CALL,
   McpToolbox,
@@ -65,11 +66,12 @@ function rows(result: McpCallResult): Array<Record<string, unknown>> {
     .map((c) => JSON.parse(c.text!) as Record<string, unknown>);
 }
 
-const usageOf = (step: string, model: string, u: { inputTokens?: number; outputTokens?: number }): Usage => ({
+const usageOf = (step: string, model: string, u: { inputTokens?: number; outputTokens?: number }, costUsd: number): Usage => ({
   step,
   model,
   inputTokens: u.inputTokens ?? 0,
   outputTokens: u.outputTokens ?? 0,
+  costUsd,
 });
 
 /**
@@ -108,7 +110,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
           if (!invoice) throw new Error(`invoice ${input.invoiceId} not found`);
           const text = resultText(await call(t, "docs:read_pdf_text", { path: String(invoice.document_path) }, "activity"), 20_000);
           const skill = await skills(["untrusted-content"]);
-          const { output, usage } = await withHeartbeat((abortSignal) =>
+          const { output, usage, response } = await withHeartbeat((abortSignal) =>
             generateText({
               ...MODEL_CALL,
               abortSignal,
@@ -122,8 +124,9 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
             fields: output as InvoiceFields,
             text,
             documentPath: String(invoice.document_path),
+            record: { vendorId: String(invoice.vendor_id), poId: String(invoice.po_id) },
             skillVersions: skill.versions,
-            usage: usageOf("read invoice", agentConfig.models.extract, usage),
+            usage: usageOf("read invoice", agentConfig.models.extract, usage, gatewayCostUsd(response.headers)),
           };
         });
       } catch (error) {
@@ -132,7 +135,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
     },
 
     /** 3. Model-driven evidence gathering over read-only tools, bounded by evidenceRounds. */
-    async gatherEvidence(input: { invoiceId: string; match: MatchResult; invoiceText: string; documentPath: string }) {
+    async gatherEvidence(input: { invoiceId: string; match: MatchResult; invoiceText: string; documentPath: string; record?: { vendorId: string; poId: string } }) {
       const evidence: Evidence[] = [
         { ref: "E1", source: "match-engine:run_match", args: { invoice_id: input.invoiceId }, excerpt: input.match.findings.map((f) => `${f.code}: ${f.message}`).join("\n").slice(0, EXCERPT_CHARS) },
         { ref: "E2", source: "docs:read_pdf_text", args: { path: input.documentPath }, excerpt: input.invoiceText.slice(0, EXCERPT_CHARS) },
@@ -148,7 +151,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
             runToolLoop({
               model: models[agentConfig.models.evidence],
               system: `${EVIDENCE_SYSTEM}\n\n${skill.text}`,
-              prompt: evidencePrompt(input.invoiceId, input.match, input.invoiceText.slice(0, 6_000)),
+              prompt: evidencePrompt(input.invoiceId, input.match, input.invoiceText.slice(0, 6_000), input.record),
               toolbox: t,
               maxSteps: agentConfig.limits.evidenceRounds + 1,
               abortSignal,
@@ -161,7 +164,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
             steps: loop.steps,
             stoppedAtLimit: loop.stoppedAtLimit,
             skillVersions: skill.versions,
-            usage: usageOf("gather evidence", agentConfig.models.evidence, loop.usage),
+            usage: usageOf("gather evidence", agentConfig.models.evidence, loop.usage, loop.usage.costUsd),
           };
         }, collect);
       } catch (error) {
@@ -179,7 +182,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
     }) {
       try {
         const skill = await skills(["ap-resolution-policy", "three-way-match-exceptions", "untrusted-content"]);
-        const { output, usage } = await withHeartbeat((abortSignal) =>
+        const { output, usage, response } = await withHeartbeat((abortSignal) =>
           generateText({
             ...MODEL_CALL,
             abortSignal,
@@ -195,7 +198,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
           proposal: { ...proposal, citedEvidence: cited },
           citationsValid: valid,
           skillVersions: skill.versions,
-          usage: usageOf(input.revision ? "revise proposal" : "propose", agentConfig.models.propose, usage),
+          usage: usageOf(input.revision ? "revise proposal" : "propose", agentConfig.models.propose, usage, gatewayCostUsd(response.headers)),
         };
       } catch (error) {
         throw toActivityFailure(error);
@@ -218,7 +221,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
           if (input.recipient === "vendor") to = String(rows(await call(t, "erp-read:get_vendor", { vendor_id: String(invoice?.vendor_id) }, "activity"))[0]?.email);
           if (input.recipient === "buyer") to = String(rows(await call(t, "erp-read:get_purchase_order", { po_id: String(invoice?.po_id) }, "activity"))[0]?.buyer_email);
           const skill = await skills(["vendor-correspondence", "untrusted-content"]);
-          const { output, usage } = await withHeartbeat((abortSignal) =>
+          const { output, usage, response } = await withHeartbeat((abortSignal) =>
             generateText({
               ...MODEL_CALL,
               abortSignal,
@@ -228,7 +231,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
               output: Output.object({ schema: MessageSchema }),
             }),
           );
-          return { message: { ...(output as MessageDraft), to }, skillVersions: skill.versions, usage: usageOf("draft message", agentConfig.models.draft, usage) };
+          return { message: { ...(output as MessageDraft), to }, skillVersions: skill.versions, usage: usageOf("draft message", agentConfig.models.draft, usage, gatewayCostUsd(response.headers)) };
         });
       } catch (error) {
         throw toActivityFailure(error);

@@ -56,5 +56,6 @@ describe("checkCitations", () => {
     expect(checkCitations(proposal({ rationale: "A [E1] and B [E3].", citedEvidence: ["E1"] }), ["E1", "E2", "E3"])).toEqual({ cited: ["E1", "E3"], valid: true });
     expect(checkCitations(proposal({ rationale: "A [E9].", citedEvidence: ["E1"] }), ["E1"])).toEqual({ cited: ["E1"], valid: false });
     expect(checkCitations(proposal({ rationale: "No citations.", citedEvidence: [] }), ["E1"]).valid).toBe(false);
+    expect(checkCitations(proposal({ rationale: "Both [E1, E2] agree.", citedEvidence: [] }), ["E1", "E2"])).toEqual({ cited: ["E1", "E2"], valid: true });
   });
 });

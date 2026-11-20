@@ -1,5 +1,5 @@
 import { generateText, stepCountIs, type LanguageModel } from "ai";
-import { MODEL_CALL } from "../llm.js";
+import { gatewayCostUsd, MODEL_CALL } from "../llm.js";
 import type { McpToolbox } from "./toolbox.js";
 import type { ToolCallRecord } from "./types.js";
 
@@ -22,7 +22,8 @@ export interface ToolLoopResult {
   stoppedAtLimit: boolean;
   /** Tool calls made during this loop, refused ones included. */
   calls: ToolCallRecord[];
-  usage: { inputTokens: number; outputTokens: number };
+  /** Tokens over all steps, and the gateway's reported cost (USD). */
+  usage: { inputTokens: number; outputTokens: number; costUsd: number };
 }
 
 /**
@@ -52,6 +53,7 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
     usage: {
       inputTokens: result.totalUsage.inputTokens ?? 0,
       outputTokens: result.totalUsage.outputTokens ?? 0,
+      costUsd: result.steps.reduce((sum, s) => sum + gatewayCostUsd(s.response?.headers), 0),
     },
   };
 }

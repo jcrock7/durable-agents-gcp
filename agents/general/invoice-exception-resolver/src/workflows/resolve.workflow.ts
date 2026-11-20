@@ -112,6 +112,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
   try {
     let invoiceText = "";
     let documentPath = "";
+    let erpRecord: { vendorId: string; poId: string } | undefined;
     for (state.round = 1; state.round <= limits.rounds; state.round++) {
       // 1. Match.
       enter("matching");
@@ -133,6 +134,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
         state.invoice = read.fields;
         invoiceText = read.text;
         documentPath = read.documentPath;
+        erpRecord = read.record;
         step("Read invoice PDF", `${read.fields.vendorInvoiceNumber} · ${read.fields.totalDue}`);
         if (read.fields.containsInstructions) {
           return holdAndFinish("blocked", [`the invoice contains instructions addressed to the system: ${read.fields.instructionsSummary || "unspecified"}`]);
@@ -141,7 +143,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
 
       // 3. Gather evidence.
       enter("gathering_evidence");
-      const gathered = await gatherEvidence({ invoiceId: input.invoiceId, match, invoiceText, documentPath });
+      const gathered = await gatherEvidence({ invoiceId: input.invoiceId, match, invoiceText, documentPath, record: erpRecord });
       record(gathered);
       state.evidence = gathered.evidence;
       state.notes = gathered.notes;

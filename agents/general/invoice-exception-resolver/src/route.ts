@@ -59,7 +59,8 @@ export function route({ proposal, adjustment, match, citationsValid }: RouteInpu
 /** Evidence references in the rationale and the cited list, and whether they all exist. */
 export function checkCitations(proposal: Proposal, evidenceRefs: readonly string[]): { cited: string[]; valid: boolean } {
   const known = new Set(evidenceRefs);
-  const inText = [...proposal.rationale.matchAll(/\[(E\d+)\]/g)].map((m) => m[1]!);
+  // Citations like [E2], or grouped like [E1, E3].
+  const inText = [...proposal.rationale.matchAll(/\[(E\d+(?:\s*,\s*E\d+)*)\]/g)].flatMap((m) => m[1]!.split(/\s*,\s*/));
   const all = [...new Set([...proposal.citedEvidence.map((r) => r.replace(/[[\]\s]/g, "")), ...inText])];
   const cited = all.filter((r) => known.has(r));
   return { cited, valid: cited.length > 0 && cited.length === all.length };

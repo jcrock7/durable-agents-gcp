@@ -23,7 +23,8 @@ Folders are named for **where and how often** you run them. The full order, with
 | `local/mcp-verify.sh` | Port-forwards the MCP servers and checks them through the agent's allow-listed client: tools per server, one call each, write tools hidden from the model. Changes no data | — |
 | `local/erp-load.sh` | Resets the synthetic ERP (database `erp`) to its seeded state, dropping every resolution and outbox message | — |
 | `local/match-engine-load.sh [seconds] [concurrency]` | HPA demo: runs a load-test Job against match-engine in the cluster and prints CPU and replicas every 15 seconds as it scales up and back down | — |
-| `local/erp-event.sh receipt|reply INV-<n> [text]` | Invoice Exception Resolver demo: posts a goods receipt or a vendor reply in the synthetic ERP and signals the case to re-check at once | — |
+| `local/erp-event.sh receipt|reply INV-<n> [text]` | Invoice Exception Resolver demo: posts a goods receipt or a vendor reply in the synthetic ERP and signals the case to re-check at once | — |
+| `local/invoice-evals.sh [models label]` | Runs the Invoice Exception Resolver evals (promptfoo) against the deployed agent, writes its `evals/RESULTS.md`, then resets the ERP. Costs about $0.005 a case on Flash-Lite | `EVAL_SCENARIOS`, `EVAL_PER_SCENARIO`, `EVAL_LIMIT` |
 | `gcp/cost-guardrails.sh` | `plan`, `apply`, `test`, `status`, `destroy` for budget alerts and the enforcer | Cost guardrails block |
 | `gcp/foundation.sh` | `plan`, `apply`, `output`, `destroy` for the persistent layer: registry, backup bucket, service accounts, secrets, IAP, CI federation | Foundation block |
 | `gke/up.sh` | Creates the per-session cluster layer and points kubectl at it. `plan` previews | Cluster block |

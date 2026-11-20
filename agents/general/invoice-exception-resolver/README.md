@@ -1,6 +1,6 @@
 # Invoice Exception Resolver
 
-> **Status: building.** M1 (MCP client, allow-list, tool loop, skill loader in [agent-kit](../../../packages/agent-kit/)), M2 (synthetic ERP, document store, and the `erp-read`, `erp-write` and `docs` MCP servers) and M3 (the match engine, scaling 1 to 10 replicas under load) are done, all in [platform/mcp](../../../platform/mcp/), and M4 (the workflow, approval, waits and queue) runs on k3d; M5, evals on the labelled cases, is next. This README is the design. It becomes the agent's normal README as each milestone lands. Why this agent: [business case](business-case.md). Where it fits: [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md). How tools and skills work: [ADR-0020](../../../docs/adr/0020-mcp-tools-and-skills.md).
+> **Status: built (prototype).** All five milestones are done: tools and skills ([agent-kit](../../../packages/agent-kit/)), the synthetic ERP and MCP servers ([platform/mcp](../../../platform/mcp/)), the match engine with its HPA, the workflow, and evals that meet every target in the business case ([results](evals/RESULTS.md)). It runs on k3d; GKE is untested. Why this agent: [business case](business-case.md). Where it fits: [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md). How tools and skills work: [ADR-0020](../../../docs/adr/0020-mcp-tools-and-skills.md).
 
 Works the invoices a three-way match rejects. It reruns the match deterministically, classifies the exception, gathers evidence from the ERP, documents and the vendor mailbox, and proposes a cited resolution. It chases the vendor or the receiving dock and waits for days if needed. A person approves anything that changes what gets paid. This is the **template agent** for [ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md): the first agent built on MCP tools and skills, and the one the next four copy.
 
@@ -149,22 +149,38 @@ scripts/local/erp-load.sh
 
 The queue gives a case's slot back as soon as the case waits (for a person or a receipt) or finishes, so long waits never block it, and it finishes once every case has reached that point. Cases outlive the queue.
 
-**Models.** With `LOCAL_MODELS=mock` the gateway answers with the smallest valid object for each schema, so every case proposes `accept_variance` with no valid citations and waits for review. That exercises the workflow, tools, approvals, durability and the ERP writes, but not judgment. `LOCAL_MODELS=flash-lite` or `full` uses Gemini through the same gateway; the quality of the proposals is what M5's evals measure.
+**Models.** With `LOCAL_MODELS=mock` the gateway answers with the smallest valid object for each schema, so every case proposes `accept_variance` with no valid citations and waits for review. That exercises the workflow, tools, approvals, durability and the ERP writes, but not judgment. `LOCAL_MODELS=flash-lite` or `full` uses Gemini through the same gateway; the quality of the proposals is what the [evals](#evals-m5) measure.
 
 ## What has been checked (M4)
 
 - **Workflow tests** ([`test/workflow.test.ts`](test/workflow.test.ts), Temporal's time-skipping server, activities mocked): post without a person; approval of an over-threshold variance with the approver recorded; send-back and revision; rejection after too many send-backs; 7-day expiry; low confidence and fraud signals escalated without approval; instructions in the PDF and a gateway guardrail block both end as `blocked` with the invoice held; uncited proposals sent to a person; an invoice that already matches closes at once; the receipt wait (daily re-match, the `recheck` signal, reminders on days 3 and 7, escalation on day 10, a second round when the receipt appears); a worker restart mid-case with no finished step repeated; the queue fanning out 12 cases that outlive it. Plus unit tests for the routing rules and citation checks.
 - **On k3d, with the real MCP servers and the mock models:** INV-20931 went match → read → evidence → propose → route (to a person: the action, the $1,284.00 amount and the uncited proposal) → approval → post → confirm, and the ERP shows it resolved with the approver and run id. A 20-case queue ran with the worker pod deleted mid-run; all 20 reached review on the replacement pod. The four skills load from the worker image.
 
-## Demo (target, about 3 minutes)
+## Evals (M5)
 
-1. **Queue:** start `resolveExceptionQueue` over 50 seeded exceptions. Temporal shows children fanning out; `kubectl get hpa match-engine` shows replicas climbing.
-2. **Happy path:** a price variance from a contract price change. The agent cites the contract row and proposes a credit memo request. The message goes out under the threshold.
-3. **Waiting:** a missing receipt. The run waits; posting the receipt in the ERP resolves it on the next daily check (time-skipped in the test environment, or triggered by a signal in the live demo).
-4. **The boundary:** the bank-detail-change email is flagged as possible fraud and routed to a person. The hidden-text PDF is blocked by the guardrail. An over-threshold variance waits for approval.
-5. **Approval:** approve one case with the `review` update, and watch it post and confirm.
-6. **Crash:** kill the worker mid-case. The run resumes with earlier tool calls not repeated.
-7. **Inspect:** the Temporal history shows each tool call with arguments and results. Gateway spend shows the cost per case.
+[`evals/`](evals/) is a promptfoo suite ([ADR-0009](../../../docs/adr/0009-evals-promptfoo.md)) that runs every labelled exception end to end through the deployed agent and scores it against its label. `scripts/local/invoice-evals.sh` runs it, writes [`evals/RESULTS.md`](evals/RESULTS.md) with the business case's measures, and resets the ERP. Latest run, Gemini 3.5 Flash-Lite for both model aliases:
+
+| Measure | Result | Target |
+|---|---|---|
+| Exception type classified correctly | 100% (94/94) | 90% |
+| Action matches the label | 97.9% (92/94) | 85% |
+| Proposals citing only retrieved records | 100% (94/94) | 100% |
+| Fraud and injection cases sent to a person | 100% (4/4) | 100% |
+| Cost per exception | average $0.0051, highest $0.0083 | under $0.05 |
+
+The first run scored 78.7% on action. Its misses traced to a missing vendor id in the evidence prompt, a generator bug and an ambiguous policy line, all fixed; the policy fix was made after seeing the eval, so these numbers flatter unseen cases ([details](evals/RESULTS.md#how-this-run-differs-from-the-first-one)). Each case costs about half a cent on Flash-Lite, so a full run is about $0.50 on the agent's own key.
+
+## Demo (about 5 minutes, on k3d with `LOCAL_MODELS=flash-lite`)
+
+Set `T="kubectl -n agents exec temporal-0 -- temporal"` and start from a fresh ERP (`scripts/local/erp-load.sh`). Watch each case in the Temporal UI (`kubectl -n agents port-forward svc/temporal 8233:8233`) or with the `caseState` query.
+
+1. **The queue scales the match engine.** `$T workflow start --task-queue invoice-exception-resolver --type resolveExceptionQueue --workflow-id queue-demo --input '{"limit":50}'`. Children fan out, ten at a time; in a second terminal `kubectl -n agents get hpa mcp-match-engine -w`. (For a bigger swing, `scripts/local/match-engine-load.sh`.)
+2. **The demo case.** `inv-20931` (Alder Fasteners, 1,200 rivets, $2.92 → $3.99): the agent cites the contract price change and the vendor's notice, the match engine computes $1,284.00, and the rules send it to a person (the action always needs one, and it is over $1,000). Approve it: `$T workflow update execute --workflow-id inv-20931 --name review --input '{"approved":true,"reviewer":"ap.lead"}'`. It posts and confirms.
+3. **A credit memo without a person.** `inv-20778` billed freight to a freight-prepaid vendor: the agent asks for a credit memo, the message is drafted and queued, and the invoice is held, all without approval because the amount is small.
+4. **Waiting for days.** `inv-20939` has no receipt but a shipment notice: the case holds the invoice and waits. `scripts/local/erp-event.sh receipt INV-20939` posts the receipt; the case re-matches at once and moves on.
+5. **The boundary.** `inv-20310`'s invoice asks for payment to a new bank account, with an urgent email from a look-alike domain: escalated as possible fraud, invoice held. `inv-20556`'s PDF hides text telling the system to approve it: blocked. `inv-20797` has no contract price on file: escalated rather than guessed.
+6. **Crash.** While cases are running, `kubectl -n agents delete pod -l app.kubernetes.io/name=worker`. The replacement picks every case up from its Temporal history; finished steps are not repeated.
+7. **Inspect.** `$T workflow query --workflow-id inv-20931 --name caseState -o json` shows the timeline, evidence, proposal, route reasons, every tool call (with refused ones), skill versions and cost per step. LiteLLM's spend logs show the same cost against the agent's key.
 
 ## Build plan
 
@@ -174,7 +190,7 @@ The queue gives a case's slot back as soon as the case waits (for a person or a 
 | M2. Synthetic ERP ✅ | `erp` database, roles, generator, document store; `erp-read`, `erp-write`, `docs` servers deployed by Kustomize ([platform/mcp](../../../platform/mcp/)) | `scripts/local/mcp-verify.sh` lists each server's tools and runs one call per server (8 of 8 checks pass on k3d) |
 | M3. Match engine ✅ | `platform/mcp/match-engine` with HPA | Unit tests for every exception type (96 of 96 seeded cases, 892 clean invoices match); `scripts/local/match-engine-load.sh` scaled 1 → 10 replicas on k3d with no errors ([results](../../../platform/mcp/README.md#match-engine-the-deterministic-part-and-the-part-that-scales)) |
 | M4. Workflow ✅ | Steps 1–7, review gate, waits, reminders, queue fan-out, skills | Time-skipping workflow tests: every route, timeouts, crash recovery ([what was checked](#what-has-been-checked-m4)) |
-| M5. Evals and demo | promptfoo suite on the labelled set; demo script | Success measures in the [business case](business-case.md#prototype-scope-and-success-measures) met |
+| M5. Evals and demo ✅ | promptfoo suite on the labelled set; demo script | Every success measure in the [business case](business-case.md#prototype-scope-and-success-measures) met on Flash-Lite ([results](evals/RESULTS.md)) |
 
 ## Open questions
 

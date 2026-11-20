@@ -45,6 +45,8 @@ export interface Usage {
   model: string;
   inputTokens: number;
   outputTokens: number;
+  /** What the gateway charged (USD), from its response header. */
+  costUsd: number;
 }
 
 export type Recipient = "vendor" | "buyer" | "receiving";

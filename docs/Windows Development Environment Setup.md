@@ -13,7 +13,7 @@ How this Windows 11 laptop's dev environment is configured: VS Code, PowerShell,
 | gcloud | 594.0.0 (user installer, `%LOCALAPPDATA%\Google\Cloud SDK`) | 594.0.0 (`google-cloud-cli` apt package) |
 | GKE auth plugin | gcloud component | apt package |
 | Node.js | v26 (`C:\Program Files\nodejs`) | v26.13.1 LTS via fnm 1.39.0 |
-| pnpm | 10.28.0 (npm global) | 12.21.0 (npm global under fnm's Node) |
+| pnpm | 12.21.0 (npm global) | 12.21.0 (npm global under fnm's Node) |
 | Terraform | — | 1.17.2 (`~/.local/bin`) |
 | Cluster | k3d `gke-prep-cluster` at `127.0.0.1:6550` | k3d `gke-prep-cluster` at `0.0.0.0:6550` |
 
@@ -421,7 +421,14 @@ pnpm --version   # 12.21.0
 
 - Global npm packages live inside each fnm Node version. After `fnm install` of a new version, rerun `npm install -g pnpm` for it.
 - Projects that pin `"packageManager": "pnpm@x.y.z"` in `package.json` (this repo pins `pnpm@12.17.0`) are handled automatically: WSL pnpm downloads and switches to the pinned version (`pnpm --version` in the repo prints `12.17.0`).
-- Windows pnpm 10.28.0 currently **fails** in this repo with `Failed to switch pnpm to v12.17.0 … CLI is missing at "%LOCALAPPDATA%\pnpm\.tools\pnpm\12.17.0\bin"` (its cache of the pinned version is incomplete).
+- Windows pnpm must also be 12.x. pnpm 10 failed in this repo with `Failed to switch pnpm to v12.17.0 … CLI is missing at "%LOCALAPPDATA%\pnpm\.tools\pnpm\12.17.0\bin"`: the download was complete, but pnpm 10 on Windows tries to run the extensionless `bin\pnpm` shell shim, so every retry left another `12.17.0_tmp_*` folder behind. Fix, in Windows PowerShell (npm 11 skips pnpm's install scripts unless allowed):
+
+  ```powershell
+  npm install -g pnpm@latest --allow-scripts=pnpm
+  pnpm --version   # 12.21.0 outside the repo, 12.17.0 inside it
+  ```
+
+  The leftover `%LOCALAPPDATA%\pnpm\.tools\pnpm\12.17.0_tmp_*` folders from pnpm 10 can be deleted.
 
 ## 11. WSL: Terraform
 

@@ -45,14 +45,15 @@ resource "google_container_cluster" "this" {
     enabled = true
   }
 
-  # Metrics: system components only. Autopilot otherwise turns on Google Managed Prometheus and the
-  # cAdvisor/kubelet/kube-state packages, which are billed as Prometheus samples (about $0.02/hr on
-  # the first session, the largest line item). Nothing here reads them: the portal uses Temporal,
-  # LiteLLM and the Kubernetes API, and ADR-0008 uses Cloud Logging/Trace/Monitoring.
+  # Metrics: system components only. Autopilot otherwise also collects the cAdvisor/kubelet/
+  # kube-state packages, billed as Prometheus samples (about $0.02/hr on the first session, the
+  # largest line item). Nothing here reads them: the portal uses Temporal, LiteLLM and the
+  # Kubernetes API, and ADR-0008 uses Cloud Logging/Trace/Monitoring. Managed Prometheus itself
+  # can't be turned off on Autopilot (GKE 1.25+); with no PodMonitoring resources it ingests nothing.
   monitoring_config {
     enable_components = ["SYSTEM_COMPONENTS"]
     managed_prometheus {
-      enabled = false
+      enabled = true
     }
   }
 

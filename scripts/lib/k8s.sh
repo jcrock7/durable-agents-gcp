@@ -64,6 +64,15 @@ ensure_platform_secrets() {
 # LiteLLM doesn't let an admin set another user's password: it issues an invitation link where
 # the user chooses their own, so no UI password is stored anywhere. Until a password is set,
 # each run prints a fresh link (valid 7 days). Run after LiteLLM is ready.
+# litellm_user_exists <user_id>: "t" if LiteLLM's database has the user, else "f". Read from the
+# database because /user/info answers 200 with a placeholder for unknown users (LiteLLM v1.106).
+litellm_user_exists() {
+  local primary
+  primary="$(kubectl -n "$NS" get cluster.postgresql.cnpg.io/agents-pg -o jsonpath='{.status.currentPrimary}')"
+  kubectl -n "$NS" exec "$primary" -c postgres -- psql -tAq litellm -c \
+    "select exists (select 1 from \"LiteLLM_UserTable\" where user_id = '$1')"
+}
+
 ensure_litellm_ui_admin() {
   local primary has_password invitation
   primary="$(kubectl -n "$NS" get cluster.postgresql.cnpg.io/agents-pg -o jsonpath='{.status.currentPrimary}')"
@@ -73,7 +82,10 @@ ensure_litellm_ui_admin() {
     log "LiteLLM UI: sign in as 'admin' with the password you chose"
     return 0
   fi
-  invitation="$(kubectl -n "$NS" exec deploy/litellm -c litellm -- python -c '
+  # The invitation records its creator, and the master key acts as user "default_user_id", which a
+  # fresh database doesn't have (foreign key on LiteLLM_InvitationLink.created_by).
+  invitation="$(kubectl -n "$NS" exec deploy/litellm -c litellm -- env \
+    "USER_EXISTS=$(litellm_user_exists ui-admin)" "CREATOR_EXISTS=$(litellm_user_exists default_user_id)" python -c '
 import json, os, urllib.request, urllib.error
 headers = {"Authorization": "Bearer " + os.environ["LITELLM_MASTER_KEY"], "Content-Type": "application/json"}
 def call(path, body=None):
@@ -81,13 +93,11 @@ def call(path, body=None):
                                  data=None if body is None else json.dumps(body).encode())
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.load(r)
-try:
-    call("/user/info?user_id=ui-admin")
-except urllib.error.HTTPError as e:
-    if e.code != 404:
-        raise
+if os.environ["USER_EXISTS"] != "t":
     call("/user/new", {"user_id": "ui-admin", "user_email": "admin",
                        "user_role": "proxy_admin", "auto_create_key": False})
+if os.environ["CREATOR_EXISTS"] != "t":
+    call("/user/new", {"user_id": "default_user_id", "user_role": "proxy_admin", "auto_create_key": False})
 print(call("/invitation/new", {"user_id": "ui-admin"})["id"])
 ')"
   log "LiteLLM UI: set the admin password (link valid 7 days), with the LiteLLM port-forward running:"
@@ -229,7 +239,7 @@ ensure_litellm_portal_key() {
   if kubectl -n "$NS" get secret litellm-portal-key >/dev/null 2>&1; then
     existing="$(kubectl -n "$NS" get secret litellm-portal-key -o go-template='{{index .data "PORTAL_LITELLM_KEY" | base64decode}}')"
   fi
-  kubectl -n "$NS" exec -i deploy/litellm -c litellm -- python -c '
+  kubectl -n "$NS" exec -i deploy/litellm -c litellm -- env "USER_EXISTS=$(litellm_user_exists portal-api)" python -c '
 import json, os, sys, urllib.request, urllib.error
 existing = sys.stdin.read().strip()
 h = {"Authorization": "Bearer " + os.environ["LITELLM_MASTER_KEY"], "Content-Type": "application/json"}
@@ -244,9 +254,7 @@ if existing:
         sys.exit(0)
     except urllib.error.HTTPError:
         pass
-try:
-    call("/user/info?user_id=portal-api")
-except urllib.error.HTTPError:
+if os.environ["USER_EXISTS"] != "t":
     call("/user/new", {"user_id": "portal-api", "user_role": "proxy_admin_viewer", "auto_create_key": False})
 try:
     call("/key/delete", {"key_aliases": ["portal-api"]})
@@ -257,5 +265,13 @@ print(call("/key/generate", {"user_id": "portal-api", "key_alias": "portal-api",
     | sed 's/^/PORTAL_LITELLM_KEY=/' \
     | kubectl -n "$NS" create secret generic litellm-portal-key --from-env-file=/dev/stdin --dry-run=client -o yaml \
     | kubectl apply -f - >/dev/null
-  log "LiteLLM portal key in place (viewer role, no spend)"
+  # The API reads the key from its environment at start, so restart it when the key is new.
+  local current
+  current="$(kubectl -n "$NS" get secret litellm-portal-key -o go-template='{{index .data "PORTAL_LITELLM_KEY" | base64decode}}')"
+  if [[ "$current" != "$existing" ]] && kubectl -n "$NS" get deployment api >/dev/null 2>&1; then
+    kubectl -n "$NS" rollout restart deployment/api >/dev/null
+    log "LiteLLM portal key in place (viewer role, no spend); restarted the portal API to pick it up"
+  else
+    log "LiteLLM portal key in place (viewer role, no spend)"
+  fi
 }

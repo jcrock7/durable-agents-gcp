@@ -190,7 +190,8 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
           return holdAndFinish("escalated", [verdict.escalate.note, `escalated by ${verdict.reviewer ?? "a reviewer"}`]);
         }
         if (verdict.approved) {
-          step("Approved", verdict.reviewer ?? "", "done", `Approved by ${verdict.reviewer ?? "a reviewer"}.`);
+          const why = verdict.feedback?.trim();
+          step("Approved", [verdict.reviewer, why && `reason: ${why}`].filter(Boolean).join(" · "), "done", `Approved by ${verdict.reviewer ?? "a reviewer"}${why ? `, who gave this reason: ${why}` : ""}.`);
           break;
         }
         state.feedback.push(verdict.feedback ?? "");

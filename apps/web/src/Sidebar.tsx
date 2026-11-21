@@ -48,7 +48,11 @@ export function Sidebar(props: {
         <span className="dot" style={{ background: DOT[a.status] }} />
       </span>
       {!collapsed && <span className={`grow ${text}`}>{a.name}</span>}
-      {!collapsed && a.needsPerson > 0 && <span className={`nav-count ${text}`}>{a.needsPerson}</span>}
+      {a.needsPerson > 0 && (
+        <span className="nav-count" aria-hidden="true">
+          {a.needsPerson}
+        </span>
+      )}
     </button>
   );
 
@@ -70,10 +74,14 @@ export function Sidebar(props: {
         <Radar size={18} />
         {!collapsed && <span className={`grow ${text}`}>Overview</span>}
       </button>
-      <button type="button" className={`nav-item${view === "needs" ? " current" : ""}`} aria-current={view === "needs" ? "page" : undefined} title="Needs Decision" onClick={() => props.onNav("#/cases/needs")}>
+      <button type="button" className={`nav-item${view === "needs" ? " current" : ""}`} aria-current={view === "needs" ? "page" : undefined} title="Needs Decision" aria-label={`Needs Decision${props.needPerson ? `, ${props.needPerson} waiting` : ""}`} onClick={() => props.onNav("#/cases/needs")}>
         <Flag />
         {!collapsed && <span className={`grow ${text}`}>Needs Decision</span>}
-        {!collapsed && props.needPerson > 0 && <span className={`nav-count ${text}`}>{props.needPerson}</span>}
+        {props.needPerson > 0 && (
+          <span className="nav-count" aria-hidden="true">
+            {props.needPerson}
+          </span>
+        )}
       </button>
       <button type="button" className={`nav-item${view === "cases" ? " current" : ""}`} aria-current={view === "cases" ? "page" : undefined} title="All Cases" onClick={() => props.onNav("#/cases")}>
         <List />

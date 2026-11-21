@@ -1,11 +1,11 @@
 // The Live Run view (docs/superpowers/specs/2026-11-20-live-run-view-design.md): a case's workflow
 // graph, the agent's plain-language feed, and the Temporal engine drawer, live or as a replay.
-import { useEffect, useState } from "react";
-import { postJson } from "../api.js";
+import { useEffect, useRef, useState } from "react";
+import { postJson, titleCase } from "../api.js";
 import { AgentFeed } from "./AgentFeed.js";
 import { EngineDrawer } from "./EngineDrawer.js";
 import { clock } from "./format.js";
-import { LIVE_GRAPHS } from "./graphs.js";
+import { LIVE_GRAPHS, allNodes } from "./graphs.js";
 import { ReplayControls } from "./ReplayControls.js";
 import { RunGraph } from "./RunGraph.js";
 import { useLive } from "./useLive.js";
@@ -21,6 +21,21 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
   /** The worker identity just killed: the button stays off until the step is running somewhere else. */
   const [killed, setKilled] = useState<string>();
   const view = live.view;
+  const root = useRef<HTMLDivElement>(null);
+
+  // The view covers the page, so it takes focus when it opens and gives it back when it closes.
+  const before = useRef<Element | null>(null);
+  const loaded = Boolean(view);
+  useEffect(() => {
+    before.current ??= document.activeElement;
+    root.current?.focus();
+  }, [loaded]);
+  useEffect(
+    () => () => {
+      if (before.current instanceof HTMLElement) before.current.focus();
+    },
+    [],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -40,7 +55,7 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
 
   const back = (
     <button type="button" className="link-btn" onClick={props.onBack}>
-      ← Back to case
+      ‹ Back to Case
     </button>
   );
 
@@ -48,7 +63,7 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
     return (
       <div className="live-run">
         {back}
-        <div className="panel empty">Live view isn't available for this agent.</div>
+        <div className="panel empty">The live view is not available for this agent.</div>
       </div>
     );
   }
@@ -68,7 +83,7 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
     setKilled(runningOn);
     try {
       const r = await postJson<{ pod: string }>("/api/demo/kill-worker", { workflowId: props.workflowId });
-      setToast(`⚡ Killed ${r.pod}. Temporal will retry the step on another worker.`);
+      setToast(`Killed worker ${r.pod}. Temporal will retry the step on another worker.`);
     } catch (e) {
       setToast(e instanceof Error ? e.message : String(e));
     } finally {
@@ -79,11 +94,21 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
     setFocus(id);
     setDrawer(true);
   };
+  // A run parked at a gate is not doing anything: say what it is waiting for instead of "Live".
+  const parked = view.running && view.pending.length === 0 ? allNodes(graph).find((n) => n.gate && view.nodes[n.id]?.status === "now") : undefined;
   const status =
-    live.mode === "replay" ? <span className="live-pill replay">REPLAY</span> : view.running ? <span className="live-pill live">LIVE</span> : <span className="live-pill done">{view.status}</span>;
+    live.mode === "replay" ? (
+      <span className="tag info">Replay</span>
+    ) : parked ? (
+      <span className="tag warn">Paused · Waiting at the {titleCase(parked.label)}</span>
+    ) : view.running ? (
+      <span className="tag info live-now">Live</span>
+    ) : (
+      <span className="tag idle">{titleCase(view.status.toLowerCase())}</span>
+    );
 
   return (
-    <div className="live-run" role="dialog" aria-label={`Live run ${props.workflowId}`}>
+    <div className="live-run" role="dialog" aria-modal="true" aria-label={`Run view for ${(view.header.ref ?? props.workflowId).toUpperCase()}`} tabIndex={-1} ref={root}>
       <div className="live-top">
         {back}
         <span className="muted">{props.agentName}</span>
@@ -93,30 +118,33 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
         {status}
         <span className="t2">
           {[view.header.vendor, view.header.total].filter(Boolean).join(" · ")}
-          {view.header.kind && <span className="tag warn" style={{ marginLeft: 8 }}>{view.header.kind}</span>}
+          {view.header.kind && <span className="tag idle" style={{ marginLeft: 8 }}>{titleCase(view.header.kind)}</span>}
         </span>
         <span className="live-stats">
           <span>
-            <b className="mono">{clock(view.elapsedMs)}</b>
-            <i>elapsed</i>
+            <b>{clock(view.elapsedMs)}</b>
+            <i>Elapsed</i>
           </span>
           <span>
-            <b className="mono">${view.costUsd.toFixed(3)}</b>
-            <i>LLM cost</i>
+            <b>${view.costUsd.toFixed(4)}</b>
+            <i>Model Cost</i>
           </span>
           <span>
-            <b className="mono">{view.toolCalls}</b>
-            <i>tool calls</i>
+            <b>{view.toolCalls}</b>
+            <i>Tool Calls</i>
           </span>
         </span>
         <span className="live-actions">
           <button type="button" className="btn sm" onClick={() => setDrawer(!drawer)} aria-expanded={drawer}>
-            ⚙ Engine · {view.events.length}
+            Engine History · {view.events.length}
           </button>
-          {props.demoControls && live.mode === "live" && (
-            <button type="button" className="btn sm live-kill" disabled={!canKill} title={canKill ? "Delete the worker pod running this step" : "Only during a model step"} onClick={() => void kill()}>
-              ⚡ Kill worker
-            </button>
+          {props.demoControls && live.mode === "live" && !parked && (
+            <span className="live-demo">
+              <span className="lab">Demo Control</span>
+              <button type="button" className="btn sm live-kill" disabled={!canKill} title={canKill ? "Delete the worker pod running this step" : "Available only while a model step is running"} onClick={() => void kill()}>
+                Kill Worker
+              </button>
+            </span>
           )}
         </span>
       </header>
@@ -142,6 +170,7 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
         onClearFocus={() => setFocus(undefined)}
         temporalUiUrl={props.temporalUiUrl}
       />
+      <p className="live-foot">This site uses synthetic data.</p>
     </div>
   );
 }

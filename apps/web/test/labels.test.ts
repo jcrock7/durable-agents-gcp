@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { caseGroup, caseTag, plain, sourceLabel, titleCase, type CaseSummary } from "../src/api.js";
 import { nextStep } from "../src/CaseTable.js";
-import { approveEffect, escalateEffect, sendBackEffect } from "../src/effects.js";
+import { approveEffect, decisionOutcome, escalateEffect, sendBackEffect } from "../src/effects.js";
 import { stepTime } from "../src/StepStrip.js";
 
 const c = (p: Partial<CaseSummary>): CaseSummary => ({
@@ -93,5 +93,26 @@ describe("step strip", () => {
     expect(stepTime(t, 1)).toBe("+9s");
     expect(stepTime(t, 2)).toBe("+6m");
     expect(stepTime(t, 3)).toBe("Now");
+  });
+});
+
+describe("decision receipt", () => {
+  const base = { actionLabel: "Accept Variance", ref: "INV-20931", amountCents: 128_400, payableCents: 4_911_360, reviewer: "jcrocker" };
+
+  it("reports an approved and posted decision with the reason given", () => {
+    const o = decisionOutcome({ ...base, path: "post", approvedAt: "2026-11-21T07:37:29.237Z", postedAt: "2026-11-21T07:37:29.483Z", approvalReason: "vendor notice on file" });
+    expect(o?.tone).toBe("ok");
+    expect(o?.title).toBe("Approved by jcrocker");
+    expect(o?.body).toMatch(/^“Accept Variance” for \$1,284\.00 was written to the ERP at .+ on 21 Nov 2026\. The invoice is payable for \$49,113\.60\. Reason given: vendor notice on file$/);
+  });
+
+  it("says nothing was posted on an escalation, and that no person was needed when none decided", () => {
+    expect(decisionOutcome({ ...base, escalationNote: "buyer to confirm" })).toEqual({ tone: "crit", title: "Escalated by jcrocker", body: "Nothing was posted. Invoice INV-20931 is on hold for an AP specialist. Note: buyer to confirm" });
+    expect(decisionOutcome({ ...base, reviewer: undefined, path: "post", postedAt: "2026-11-21T07:37:29.483Z" })).toMatchObject({ title: "Closed Without a Person" });
+  });
+
+  it("reports nothing before a decision, and an approval that has not posted yet as pending", () => {
+    expect(decisionOutcome({ ...base, path: "post" })).toBeUndefined();
+    expect(decisionOutcome({ ...base, path: "post", approvedAt: "2026-11-21T07:37:29.237Z" })).toMatchObject({ tone: "idle", title: "Approved by jcrocker" });
   });
 });

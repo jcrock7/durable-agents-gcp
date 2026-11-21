@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { usd, type AnyState } from "./api.js";
+import { titleCase, usd, type AnyState } from "./api.js";
 
 type Tab = "calls" | "skills" | "cost" | "guardrails";
 
@@ -44,7 +44,7 @@ export function Inspector({ state }: { state: AnyState }) {
                       {c.caller}
                     </span>
                     <span className={`tag ${c.outcome === "ok" ? "ok" : c.outcome === "refused" ? "warn" : "idle"}`} style={{ fontSize: 13 }}>
-                      {c.outcome}
+                      {titleCase(c.outcome)}
                     </span>
                     <span className="muted mono" style={{ fontSize: 13 }}>
                       {c.durationMs} ms

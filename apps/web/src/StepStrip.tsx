@@ -12,10 +12,10 @@ export interface Step {
 }
 
 /** The agent's work as one line of steps; selecting a step shows what it did. Used by every agent's case page. */
-export function StepStrip({ steps, action }: { steps: Step[]; action?: { label: string; href: string } }) {
+export function StepStrip({ steps, action, initial }: { steps: Step[]; action?: { label: string; href: string }; /** The step shown first; the last one when absent. */ initial?: number }) {
   const [picked, setPicked] = useState<number | null>(null);
   if (steps.length === 0) return null;
-  const sel = Math.min(picked ?? steps.length - 1, steps.length - 1);
+  const sel = Math.min(picked ?? initial ?? steps.length - 1, steps.length - 1);
   const selected = steps[sel]!;
   return (
     <div className="steps-wrap">

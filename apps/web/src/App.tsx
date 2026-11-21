@@ -79,6 +79,12 @@ export function App() {
     location.hash = hash;
   }, []);
 
+  const pageName =
+    route.view === "overview" ? "Overview" : route.view === "cases" ? "All Cases" : route.view === "needs" ? "Needs Decision" : route.case ? route.case.toUpperCase() : ((agents.data ?? []).find((a) => a.id === route.agent)?.name ?? "Agent");
+  useEffect(() => {
+    document.title = `${pageName} · Agent Operations`;
+  }, [pageName]);
+
   const theme = choice === "system" ? (dark ? "dark" : "light") : choice;
   const list = agents.data ?? [];
   const agent = route.view === "agent" ? list.find((a) => a.id === route.agent) : undefined;
@@ -175,11 +181,13 @@ export function App() {
         )}
         {route.view === "overview" && (
           <main className="page">
+            <h1 className="sr">Overview</h1>
             <Overview mission={mission.data} agents={list} health={route.health ?? false} onNav={nav} />
           </main>
         )}
         {(route.view === "cases" || route.view === "needs") && (
           <main className="page">
+            <h1 className="sr">{pageName}</h1>
             <CaseTable key={route.view} agents={list} initial={route.view === "needs" ? "needs" : "open"} onOpen={(c) => nav(`#/agent/${c.agentId}/case/${c.workflowId}`)} />
           </main>
         )}

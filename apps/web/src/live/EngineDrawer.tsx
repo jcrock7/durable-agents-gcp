@@ -17,9 +17,7 @@ function Row({ e, start, hl, selected, onPick }: { e: EngineEvent; start: string
       <td>{e.id}</td>
       <td>{offset(e.at, start)}</td>
       <td className="ty">
-        {e.kind === "failover" && "⚡ "}
-        {e.kind === "retry" && "↻ "}
-        {e.type}
+                {e.type}
       </td>
       <td className="attr">{attrsText(e.attrs)}</td>
     </tr>
@@ -74,13 +72,13 @@ export function EngineDrawer({
     return (
       <div className="live-drawer closed">
         <button type="button" className="live-dh" onClick={() => onOpen(true)} aria-expanded="false">
-          <b>⚙ Engine</b>
+          <b>Engine History</b>
           <span className="muted">
             {events.length} events{lastEvent ? ` · last: ${lastEvent.type}${lastEvent.attrs.attempt ? ` attempt=${lastEvent.attrs.attempt}` : ""} · ${offset(lastEvent.at, view.startTime)}` : ""}
           </span>
-          {retries > 0 && <span className="live-badge retry">↻ {retries}</span>}
-          {failovers > 0 && <span className="live-badge failover">⚡ {failovers}</span>}
-          <span className="live-open">▴ Open</span>
+          {retries > 0 && <span className="live-badge retry">{retries} {retries === 1 ? "Retry" : "Retries"}</span>}
+          {failovers > 0 && <span className="live-badge failover">{failovers} {failovers === 1 ? "Failover" : "Failovers"}</span>}
+          <span className="live-open">Open</span>
         </button>
       </div>
     );
@@ -100,9 +98,9 @@ export function EngineDrawer({
       <thead>
         <tr>
           <th>#</th>
-          <th>time</th>
-          <th>event</th>
-          <th>attributes</th>
+          <th>Time</th>
+          <th>Event</th>
+          <th>Attributes</th>
         </tr>
       </thead>
       <tbody>
@@ -116,14 +114,14 @@ export function EngineDrawer({
   return (
     <section className="live-drawer" aria-label="Engine history">
       <div className="live-dh">
-        <b>⚙ Engine</b>
+        <b>Engine History</b>
         <span className="muted">
           Temporal history · {events.length} events{view.running ? " · live" : ""}
         </span>
         <span className="live-tabs" role="tablist">
           {(["grouped", "raw", "json"] as Tab[]).map((t) => (
             <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-              {t === "grouped" ? "Grouped" : t === "raw" ? "Raw events" : "JSON"}
+              {t === "grouped" ? "Grouped" : t === "raw" ? "Raw Events" : "JSON"}
             </button>
           ))}
         </span>

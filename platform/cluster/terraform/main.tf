@@ -63,9 +63,15 @@ locals {
 
 resource "google_compute_managed_ssl_certificate" "gateway" {
   project = var.project_id
-  name    = "${var.cluster_name}-cert"
+  # Name is unique per hostname so a hostname change creates the new cert first; the old one
+  # stays in use by the Gateway's HTTPS proxy until apply-k8s.sh repoints it.
+  name = "${var.cluster_name}-cert-${substr(sha1(local.hostname), 0, 8)}"
 
   managed {
     domains = [local.hostname]
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }

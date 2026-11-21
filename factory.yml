@@ -1,0 +1,11 @@
+# project: <number>  # set after creating the Project (docs/ADOPTING.md)
+commands:
+  test: pnpm test
+ui:
+  stack: react-vite
+  dir: apps/web
+adr:
+  dir: docs/adr
+  template: docs/adr/template.md
+registries:
+  - registry.npmjs.org

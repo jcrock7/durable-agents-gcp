@@ -2,6 +2,7 @@ import { useState } from "react";
 import { postJson, usd, usePoll, type Agent, type CaseDetail } from "./api.js";
 import { CaseTable } from "./CaseTable.js";
 import { CaseView } from "./CaseView.js";
+import { liveHash } from "./routes.js";
 
 const STATUS: Record<Agent["status"], [string, string]> = {
   active: ["ok", "Active"],
@@ -11,7 +12,21 @@ const STATUS: Record<Agent["status"], [string, string]> = {
 };
 
 /** One agent: its header and case queue, or the selected case as a full page (ADR-0021). */
-export function AgentView({ agent, me, caseId, onCase }: { agent: Agent; me: string; caseId: string | null; onCase: (id: string | null) => void }) {
+export function AgentView({
+  agent,
+  me,
+  demoControls,
+  caseId,
+  onCase,
+  onNav,
+}: {
+  agent: Agent;
+  me: string;
+  demoControls: boolean;
+  caseId: string | null;
+  onCase: (id: string | null) => void;
+  onNav: (hash: string) => void;
+}) {
   const detail = usePoll<CaseDetail>(caseId ? `/api/cases/${caseId}` : null, 3_000);
   const [queueMsg, setQueueMsg] = useState<string>();
 
@@ -134,6 +149,20 @@ export function AgentView({ agent, me, caseId, onCase }: { agent: Agent; me: str
                 >
                   Work the Next 10 Exceptions
                 </button>
+                {demoControls && (
+                  <button
+                    type="button"
+                    className="btn sm primary"
+                    title="Clone the demo price-variance invoice and watch the agent work it live"
+                    onClick={() =>
+                      void postJson<{ workflowId: string }>("/api/demo/sample-case", {})
+                        .then((r) => onNav(liveHash(agent.id, r.workflowId)))
+                        .catch((e: Error) => setQueueMsg(e.message))
+                    }
+                  >
+                    ▶ Run a Sample Invoice
+                  </button>
+                )}
               </span>
             ) : undefined
           }

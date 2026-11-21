@@ -1,6 +1,6 @@
 // Turns one /live response into what the Live Run view draws: node states and badges, the agent
 // feed, and header figures. Pure, so live polling and replay share it (and tests drive it).
-import type { EngineEvent, LiveResponse, LiveToolCall } from "../api.js";
+import type { EngineEvent, LiveResponse, LiveToolCall, PendingActivity } from "../api.js";
 import { allNodes, nodeForActivity, nodeForTimeline, toolPhrase, type LiveGraph } from "./graphs.js";
 
 export type NodeStatus = "pending" | "now" | "done" | "error" | "skipped";
@@ -44,6 +44,9 @@ export interface LiveView {
   canKill: boolean;
   /** Recorded before the workflow wrote narration: the feed shows step details instead. */
   legacy: boolean;
+  header: { ref?: string; vendor?: string; total?: string; kind?: string; worker?: string };
+  pending: Array<PendingActivity & { node: string }>;
+  startTime: string;
 }
 
 /** Activities that heartbeat (MODEL_ACTIVITIES in apps/api/src/demo.ts). */
@@ -167,6 +170,15 @@ export function reduceLive(g: LiveGraph, res: LiveResponse, now: number): LiveVi
     toolCalls: done.length + inflight.length,
     canKill: running && res.pending.some((p) => MODEL_ACTIVITIES.includes(p.activityType)),
     legacy: timeline.length > 0 && !timeline.some((e) => e.narration),
+    header: {
+      ref: state?.invoiceId,
+      vendor: state?.facts?.vendorName,
+      total: state?.invoice?.totalDue,
+      kind: state?.match?.exceptionTypes?.[0]?.replace(/_/g, " "),
+      worker: res.workerIdentity?.split("@").pop(),
+    },
+    pending: res.pending.map((p) => ({ ...p, node: nodeForActivity(g, p.activityType)?.id ?? "" })),
+    startTime: res.startTime,
   };
 }
 

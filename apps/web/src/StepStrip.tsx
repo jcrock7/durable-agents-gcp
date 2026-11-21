@@ -12,7 +12,7 @@ export interface Step {
 }
 
 /** The agent's work as one line of steps; selecting a step shows what it did. Used by every agent's case page. */
-export function StepStrip({ steps }: { steps: Step[] }) {
+export function StepStrip({ steps, action }: { steps: Step[]; action?: { label: string; href: string } }) {
   const [picked, setPicked] = useState<number | null>(null);
   if (steps.length === 0) return null;
   const sel = Math.min(picked ?? steps.length - 1, steps.length - 1);
@@ -39,6 +39,11 @@ export function StepStrip({ steps }: { steps: Step[] }) {
             Step {sel + 1} · {selected.title}
           </b>
           <span>Select any step above to see what the agent did</span>
+          {action && (
+            <a className="btn sm live-entry" href={action.href}>
+              {action.label}
+            </a>
+          )}
         </div>
         <div className="sd">
           {selected.detail.map((d) => (

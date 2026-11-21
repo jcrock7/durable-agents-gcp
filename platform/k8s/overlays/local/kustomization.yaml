@@ -16,6 +16,9 @@ resources:
   - ../../../mcp
   - ingress.yaml
 
+components:
+  - ../../components/demo-controls
+
 configMapGenerator:
   - name: litellm-env
     behavior: merge

@@ -43,6 +43,7 @@ const proposalOf = (p: Partial<Proposal>): Proposal => ({
   fraudFlag: false,
   fraudReason: "",
   unconfirmed: "",
+  narration: "Proposing to accept the variance.",
   ...p,
 });
 
@@ -70,6 +71,7 @@ function mockActivities(script: Script = {}, overrides: Partial<Activities> = {}
         lineCount: 2,
         containsInstructions: script.containsInstructions ?? false,
         instructionsSummary: script.containsInstructions ? "tells the system to approve without review" : "",
+        narration: "Read the invoice.",
       },
       text: "Alder Fasteners\nINVOICE",
       documentPath: "invoices/INV-20931.pdf",
@@ -79,6 +81,7 @@ function mockActivities(script: Script = {}, overrides: Partial<Activities> = {}
     })),
     gatherEvidence: vi.fn(async () => ({
       notes: "Contract price changed; notice found.",
+      narration: "Found the contract price change.",
       evidence: ["E1", "E2", "E3", "E4"].map((ref) => ({ ref, source: "erp-read:get_contract_prices", args: {}, excerpt: ref })),
       steps: 3,
       stoppedAtLimit: false,
@@ -97,7 +100,7 @@ function mockActivities(script: Script = {}, overrides: Partial<Activities> = {}
       calls: [],
     })),
     draftMessage: vi.fn(async ({ recipient }: { recipient: string }) => ({
-      message: { to: `${recipient}@example.test`, subject: "Credit memo requested", body: "Please send a credit memo." },
+      message: { to: `${recipient}@example.test`, subject: "Credit memo requested", body: "Please send a credit memo.", narration: "Drafted the message." },
       skillVersions: { "vendor-correspondence": "1.0" },
       usage: { step: "draft message", model: "fast", inputTokens: 600, outputTokens: 120 },
       calls: [],
@@ -166,6 +169,19 @@ describe("resolveInvoiceException: routes", () => {
     expect(result).toMatchObject({ status: "resolved", action: "accept_variance", reviewer: "ap.lead", humanTouches: 1, citedEvidence: ["E3", "E4"] });
     expect(acts.postResolution).toHaveBeenCalledWith(expect.objectContaining({ approvedBy: "ap.lead", amountCents: 128_400 }));
     expect(result.skillVersions).toMatchObject({ "ap-resolution-policy": "1.2", "untrusted-content": "1.0" });
+  });
+
+  it("every timeline entry of an approved run has narration", async () => {
+    const acts = mockActivities();
+    let final: CaseState | undefined;
+    await run(acts, async (handle) => {
+      await awaitingReview(handle, 1);
+      await submitReview(handle, { approved: true, reviewer: "ap.lead" });
+      final = await waitFor(handle, (s) => s.stage === "done", "done");
+    });
+    expect(final!.timeline.length).toBeGreaterThan(6);
+    for (const e of final!.timeline) expect(e.narration, e.name).toMatch(/\S/);
+    expect(final!.timeline.find((e) => e.name === "Read invoice PDF")?.narration).toBe("Read the invoice.");
   });
 
   it("revises the proposal when the reviewer sends it back", async () => {

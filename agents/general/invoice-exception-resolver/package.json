@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@temporalio/testing": "1.25.0",
-    "@temporalio/worker": "1.25.0"
+    "@temporalio/worker": "1.25.0",
+    "@modelcontextprotocol/sdk": "1.32.2"
   }
 }

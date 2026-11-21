@@ -1,0 +1,16 @@
+# Demo controls for the portal's Live Run view (docs/superpowers/specs/2026-11-20-live-run-view-design.md):
+#   - 2 worker replicas, so killing one fails the case over to a worker that is already running
+#   - DEMO_CONTROLS=true on the API: /api/demo/sample-case and /api/demo/kill-worker
+#   - a Role that lets the API delete (only) pods, for the kill
+#   - the API connects to the erp database as erp_demo, which may only reset the sample invoice
+#     (status updates on invoices/exceptions, deleting its earlier resolutions and outbox rows)
+# The base stays at 1 worker and no demo routes; an overlay opts in with `components:`.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - rbac.yaml
+
+patches:
+  - path: worker-replicas.yaml
+  - path: api-env.yaml

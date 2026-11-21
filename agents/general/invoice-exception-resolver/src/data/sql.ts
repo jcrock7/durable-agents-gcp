@@ -9,6 +9,8 @@ import type { ErpData } from "./model.js";
  *   erp_reader  SELECT on everything                      → MCP server erp-read
  *   erp_writer  INSERT on resolutions and outbox, UPDATE of invoices.status and exceptions.status
  *               only                                       → MCP server erp-write
+ *   erp_demo    SELECT on everything, UPDATE of invoices.status and exceptions.status, DELETE on
+ *               resolutions and outbox                     → portal API demo controls (resets the sample invoice)
  */
 export const SCHEMA_SQL = `
 SET ROLE erp_owner;
@@ -157,6 +159,12 @@ GRANT UPDATE (status) ON erp.exceptions TO erp_writer;
 GRANT INSERT ON erp.resolutions, erp.outbox TO erp_writer;
 GRANT SELECT (id) ON erp.resolutions, erp.outbox TO erp_writer;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA erp TO erp_writer;
+
+-- Also applied on every deploy by scripts/lib/k8s.sh (grant_erp_demo), for ERPs loaded before this role existed.
+GRANT USAGE ON SCHEMA erp TO erp_demo;
+GRANT SELECT ON ALL TABLES IN SCHEMA erp TO erp_demo;
+GRANT UPDATE (status) ON erp.invoices, erp.exceptions TO erp_demo;
+GRANT DELETE ON erp.resolutions, erp.outbox TO erp_demo;
 `;
 
 type Value = string | number | null | string[];

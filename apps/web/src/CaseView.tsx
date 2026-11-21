@@ -1,3 +1,4 @@
+import { liveHash } from "./routes.js";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { cents, caseTag, plain, postJson, shortDate, sourceLabel, titleCase, usd, usePoll, type Agent, type AnyState, type CaseDetail, type Skill } from "./api.js";
 import { approveEffect, escalateEffect, sendBackEffect } from "./effects.js";
@@ -364,7 +365,10 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
           </dl>
         </div>
 
-        <StepStrip steps={steps} />
+        <StepStrip
+          steps={steps}
+          action={{ label: summary.temporalStatus === "RUNNING" ? "◉ Watch live" : "▶ Replay run", href: liveHash(agent.id, summary.workflowId) }}
+        />
 
         <div className="g2">
           <div className="gcol">

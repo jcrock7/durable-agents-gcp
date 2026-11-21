@@ -2,7 +2,7 @@
 // Kubernetes API (MCP server replicas and platform health). Each is behind an interface so tests
 // can replace it.
 import { readFile } from "node:fs/promises";
-import { Client, Connection, WorkflowNotFoundError } from "@temporalio/client";
+import { Client, Connection, defaultPayloadConverter, WorkflowNotFoundError } from "@temporalio/client";
 
 export interface RunInfo {
   workflowId: string;
@@ -22,7 +22,40 @@ export interface TemporalSource {
   start(type: string, taskQueue: string, workflowId: string, arg: unknown): Promise<void>;
   /** Why and by whom a run was terminated or cancelled, from its last history event. */
   termination?(workflowId: string, runId: string): Promise<{ reason?: string; identity?: string } | undefined>;
+  /** The newest run's status and pending activities (Live Run view). Undefined if there is no such workflow. */
+  describe?(workflowId: string): Promise<RunDescription | undefined>;
+  /** The newest run's full history, as plain objects. */
+  history?(workflowId: string): Promise<RawHistoryEvent[]>;
   healthy(): Promise<boolean>;
+}
+
+/** One history event as plain data: `type` is PascalCase without the EVENT_TYPE_ prefix, `attrs` its attributes. */
+export interface RawHistoryEvent {
+  id: number;
+  at: string;
+  type: string;
+  attrs: Record<string, unknown>;
+}
+
+export interface PendingActivity {
+  activityId: string;
+  activityType: string;
+  attempt: number;
+  state: string;
+  scheduledTime?: string;
+  lastStartedTime?: string;
+  lastWorkerIdentity?: string;
+  lastFailure?: { message: string; timeoutType?: string };
+  /** The latest heartbeat details, decoded. */
+  heartbeat?: unknown;
+}
+
+export interface RunDescription {
+  runId: string;
+  status: string;
+  startTime: string;
+  closeTime?: string;
+  pending: PendingActivity[];
 }
 
 export interface KeySpend {
@@ -47,6 +80,37 @@ export interface DeploymentStatus {
 export interface KubernetesSource {
   deployments(names: string[]): Promise<DeploymentStatus[]>;
   postgresReady(): Promise<boolean | null>;
+  /** Worker pods (label app.kubernetes.io/name=worker), for the demo kill. */
+  workerPods?(): Promise<Array<{ name: string; ready: boolean }>>;
+  /** Delete a pod with no grace period: a crash, not a shutdown. Needs the demo-worker-killer Role. */
+  deletePod?(name: string): Promise<void>;
+}
+
+const PENDING_STATES: Record<number, string> = { 1: "SCHEDULED", 2: "STARTED", 3: "CANCEL_REQUESTED", 4: "PAUSED", 5: "PAUSE_REQUESTED" };
+const TIMEOUT_NAMES: Record<number, string> = { 1: "START_TO_CLOSE", 2: "SCHEDULE_TO_START", 3: "SCHEDULE_TO_CLOSE", 4: "HEARTBEAT" };
+const timeoutName = (t: unknown) => (t == null ? undefined : TIMEOUT_NAMES[Number(t)]);
+
+/** A protobuf Timestamp as an ISO string. */
+function iso(t: { seconds?: unknown; nanos?: number | null } | null | undefined): string | undefined {
+  if (!t || t.seconds == null) return undefined;
+  return new Date(Number(t.seconds) * 1000 + Math.floor((t.nanos ?? 0) / 1e6)).toISOString();
+}
+
+/** Protobuf message → plain JSON-able data: Longs become numbers, byte arrays are dropped. */
+function plain(v: unknown): unknown {
+  if (v == null) return undefined;
+  if (typeof v === "object" && typeof (v as { toNumber?: unknown }).toNumber === "function") return (v as { toNumber(): number }).toNumber();
+  if (v instanceof Uint8Array) return undefined;
+  if (Array.isArray(v)) return v.map(plain);
+  if (typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) {
+      const p = plain(x);
+      if (p !== undefined) out[k] = p;
+    }
+    return out;
+  }
+  return v;
 }
 
 const withTimeout = <T>(p: Promise<T>, ms: number, what: string): Promise<T> =>
@@ -101,6 +165,50 @@ export async function temporalSource(address: string, namespace = "default"): Pr
       if (t) return { reason: t.reason || undefined, identity: t.identity || undefined };
       const c = last?.workflowExecutionCanceledEventAttributes;
       return c ? {} : undefined;
+    },
+    async describe(workflowId) {
+      try {
+        const d = await withTimeout((await get()).workflow.getHandle(workflowId).describe(), 5_000, `describe ${workflowId}`);
+        const pending: PendingActivity[] = (d.raw.pendingActivities ?? []).map((p) => {
+          const failure = p.lastFailure ?? undefined;
+          const payload = p.heartbeatDetails?.payloads?.[0];
+          let heartbeat: unknown;
+          try {
+            heartbeat = payload ? defaultPayloadConverter.fromPayload(payload) : undefined;
+          } catch {
+            heartbeat = undefined;
+          }
+          return {
+            activityId: String(p.activityId ?? ""),
+            activityType: String(p.activityType?.name ?? ""),
+            attempt: Number(p.attempt ?? 1),
+            state: PENDING_STATES[Number(p.state ?? 0)] ?? "UNKNOWN",
+            scheduledTime: iso(p.scheduledTime),
+            lastStartedTime: iso(p.lastStartedTime),
+            lastWorkerIdentity: p.lastWorkerIdentity || undefined,
+            lastFailure: failure
+              ? { message: String(failure.message ?? ""), timeoutType: timeoutName(failure.timeoutFailureInfo?.timeoutType) }
+              : undefined,
+            heartbeat,
+          };
+        });
+        return { runId: d.runId, status: d.status.name, startTime: d.startTime.toISOString(), closeTime: d.closeTime?.toISOString(), pending };
+      } catch (error) {
+        if (error instanceof WorkflowNotFoundError) return undefined;
+        throw error;
+      }
+    },
+    async history(workflowId) {
+      const h = await withTimeout((await get()).workflow.getHandle(workflowId).fetchHistory(), 5_000, `history of ${workflowId}`);
+      return (h.events ?? []).map((e) => {
+        const key = Object.keys(e).find((k) => k.endsWith("EventAttributes") && (e as Record<string, unknown>)[k]);
+        return {
+          id: Number(e.eventId ?? 0),
+          at: iso(e.eventTime) ?? "",
+          type: key ? key[0]!.toUpperCase() + key.slice(1, -"EventAttributes".length) : "Unknown",
+          attrs: key ? (plain((e as Record<string, unknown>)[key]) as Record<string, unknown>) : {},
+        };
+      });
     },
     async healthy() {
       try {
@@ -187,6 +295,23 @@ export function kubernetesSource(namespace: string): KubernetesSource {
             : {}),
         };
       });
+    },
+    async workerPods() {
+      type Pod = { metadata: { name: string; deletionTimestamp?: string }; status?: { conditions?: Array<{ type: string; status: string }> } };
+      const pods = await get<{ items: Pod[] }>(`/api/v1/namespaces/${namespace}/pods?labelSelector=${encodeURIComponent("app.kubernetes.io/name=worker")}`);
+      return (pods?.items ?? [])
+        .filter((p) => !p.metadata.deletionTimestamp)
+        .map((p) => ({ name: p.metadata.name, ready: p.status?.conditions?.some((c) => c.type === "Ready" && c.status === "True") ?? false }));
+    },
+    async deletePod(name) {
+      if (!base) throw new Error("not running in Kubernetes");
+      const token = (await readFile(tokenPath, "utf8")).trim();
+      const res = await fetch(`${base}/api/v1/namespaces/${namespace}/pods/${encodeURIComponent(name)}?gracePeriodSeconds=0`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) throw new Error(`delete pod ${name}: HTTP ${res.status}`);
     },
     async postgresReady() {
       const c = await get<{ status?: { readyInstances?: number; instances?: number } }>(`/apis/postgresql.cnpg.io/v1/namespaces/${namespace}/clusters/agents-pg`);

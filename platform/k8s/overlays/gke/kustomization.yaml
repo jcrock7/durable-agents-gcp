@@ -21,6 +21,9 @@ resources:
   - routes.yaml
   - policies.yaml
 
+components:
+  - ../../components/demo-controls
+
 patches:
   - path: serviceaccount-annotations.yaml
   - path: litellm-spot.yaml

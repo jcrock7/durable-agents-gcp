@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { liveHash } from "./routes.js";
 import { ago, caseGroup, caseTag, cents, GROUP_LABEL, OPEN_GROUPS, plain, titleCase, usd, usePoll, type Agent, type CaseGroup, type CasePage, type CaseSummary } from "./api.js";
 
 type Tab = "open" | CaseGroup;
@@ -113,6 +114,11 @@ export function CaseTable(props: { agentId?: string; agents?: Agent[]; initial?:
                       <td data-label="Type">{kind}</td>
                       <td data-label="Status">
                         <span className={`tag ${cls}`}>{label}</span>
+                        {c.temporalStatus === "RUNNING" && c.agentId === "invoice-exception-resolver" && (
+                          <a className="live-mark" href={liveHash(c.agentId, c.workflowId)} onClick={(e) => e.stopPropagation()} title="Watch this case run live">
+                            ● Live
+                          </a>
+                        )}
                       </td>
                       <td data-label="Next" style={{ color: "var(--text-2)" }}>
                         {nextStep(c)}

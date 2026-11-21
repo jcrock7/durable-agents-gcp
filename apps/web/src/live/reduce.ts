@@ -168,7 +168,7 @@ export function reduceLive(g: LiveGraph, res: LiveResponse, now: number): LiveVi
     elapsedMs: Math.max(0, end - Date.parse(res.startTime)),
     costUsd: usage.reduce((s, u) => s + (u.costUsd ?? 0), 0),
     toolCalls: done.length + inflight.length,
-    canKill: running && res.pending.some((p) => MODEL_ACTIVITIES.includes(p.activityType)),
+    canKill: running && res.pending.some((p) => MODEL_ACTIVITIES.includes(p.activityType) && p.state === "STARTED"),
     legacy: timeline.length > 0 && !timeline.some((e) => e.narration),
     header: {
       ref: state?.invoiceId,
@@ -180,6 +180,14 @@ export function reduceLive(g: LiveGraph, res: LiveResponse, now: number): LiveVi
     pending: res.pending.map((p) => ({ ...p, node: nodeForActivity(g, p.activityType)?.id ?? "" })),
     startTime: res.startTime,
   };
+}
+
+/**
+ * One live poll merged into the last: engine events are appended after the cursor, and a poll whose
+ * query failed (state null, as while a killed worker's cases move) keeps the last known state.
+ */
+export function mergeLive(prev: LiveResponse | undefined, next: LiveResponse): LiveResponse {
+  return { ...next, events: [...(prev?.events ?? []), ...next.events], state: next.state ?? prev?.state ?? null };
 }
 
 export interface ReplayFrame {

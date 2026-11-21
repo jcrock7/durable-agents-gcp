@@ -24,8 +24,9 @@ const size = (p: Progress) => Buffer.byteLength(JSON.stringify(p));
 /** Add a completed call. Its result text is kept only while the details stay under PROGRESS_MAX_BYTES. */
 export function addCall(p: Progress, record: ToolCallRecord, resultText?: string): Progress {
   const next: Progress = { ...p, calls: [...p.calls, record] };
-  if (resultText === undefined) return next;
-  const withResult: Progress = { ...next, results: [...next.results, { key: replayKey(record.ref, record.args), text: resultText }] };
+  const key = replayKey(record.ref, record.args);
+  if (resultText === undefined || p.results.some((r) => r.key === key)) return next;
+  const withResult: Progress = { ...next, results: [...next.results, { key, text: resultText }] };
   return size(withResult) <= PROGRESS_MAX_BYTES ? withResult : next;
 }
 

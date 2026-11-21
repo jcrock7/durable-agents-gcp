@@ -6,24 +6,38 @@ import pg from "pg";
 import { z } from "zod";
 import type { KubernetesSource, TemporalSource } from "./sources.js";
 
-/** Writes the synthetic ERP as the erp_demo role: clones a seeded exception under a fresh invoice id. */
+/**
+ * Writes the synthetic ERP as the erp_demo role. The sample case reuses the seeded demo invoice:
+ * reopening it (and removing what earlier sample runs posted) keeps its PDF, PO and vendor history
+ * consistent, so a repeat run isn't mistaken for a duplicate of an earlier one.
+ */
 export interface ErpDemoSource {
-  cloneException(templateInvoiceId: string): Promise<{ invoiceId: string; exceptionId: string }>;
+  resetException(invoiceId: string): Promise<{ invoiceId: string; exceptionId: string }>;
 }
 
 /** The seeded price-variance demo invoice (data/generate.ts DEMO_INVOICE_ID). */
-export const SAMPLE_TEMPLATE_INVOICE = "INV-20931";
+export const SAMPLE_INVOICE = "INV-20931";
+export const SAMPLE_PREFIX = `${SAMPLE_INVOICE.toLowerCase()}-demo-`;
 /** Activities that heartbeat, so a killed worker is noticed within the 20s heartbeat timeout. */
 export const MODEL_ACTIVITIES = ["readInvoice", "gatherEvidence", "proposeResolution", "draftMessage"];
 
 const ID = /^[a-z0-9][a-z0-9-]{0,80}$/;
 
+/** The pod a worker identity names. The worker sets `<hostname>/<agent>` (apps/worker/src/main.ts); the SDK default is `<pid>@<hostname>`. */
+export function podFromIdentity(identity: string | undefined): string | undefined {
+  if (!identity) return undefined;
+  return identity.split("/")[0]!.split("@").pop() || undefined;
+}
+
 export function registerDemo(app: FastifyInstance, deps: { temporal: TemporalSource; kubernetes: KubernetesSource; erp: ErpDemoSource }): void {
   const { temporal, kubernetes, erp } = deps;
 
   app.post("/api/demo/sample-case", async () => {
-    const { invoiceId, exceptionId } = await erp.cloneException(SAMPLE_TEMPLATE_INVOICE);
-    const workflowId = invoiceId.toLowerCase();
+    // One sample at a time: a second press opens the one already running.
+    const [current] = await temporal.listRuns(`WorkflowType = 'resolveInvoiceException' AND WorkflowId STARTS_WITH '${SAMPLE_PREFIX}' AND ExecutionStatus = 'Running'`, 1);
+    if (current) return { workflowId: current.workflowId };
+    const { invoiceId, exceptionId } = await erp.resetException(SAMPLE_INVOICE);
+    const workflowId = `${SAMPLE_PREFIX}${Date.now().toString(36)}`;
     await temporal.start("resolveInvoiceException", "invoice-exception-resolver", workflowId, { invoiceId, exceptionId });
     return { workflowId };
   });
@@ -33,64 +47,40 @@ export function registerDemo(app: FastifyInstance, deps: { temporal: TemporalSou
     const body = KillBody.safeParse(req.body);
     if (!body.success || !temporal.describe || !kubernetes.workerPods || !kubernetes.deletePod) return reply.code(400).send({ error: "invalid request" });
     const run = await temporal.describe(body.data.workflowId);
-    const active = run?.pending.find((p) => MODEL_ACTIVITIES.includes(p.activityType));
+    const active = run?.pending.find((p) => MODEL_ACTIVITIES.includes(p.activityType) && p.state === "STARTED");
     if (!active) return reply.code(409).send({ error: "no model activity running" });
-    const pods = await kubernetes.workerPods();
-    // Temporal's default worker identity is <pid>@<hostname>, and a pod's hostname is its name.
-    const named = active.lastWorkerIdentity?.split("@").pop();
-    const pod = pods.find((p) => p.name === named)?.name ?? pods.find((p) => p.ready)?.name;
-    if (!pod) return reply.code(409).send({ error: "no worker pod found" });
-    await kubernetes.deletePod(pod);
-    return { pod };
+    // Only the pod actually running the step, and only while it is alive. After a kill the activity
+    // still names the dead pod until its heartbeat times out; never fall back to another worker.
+    const name = podFromIdentity(active.lastWorkerIdentity);
+    const pod = (await kubernetes.workerPods()).find((p) => p.name === name && p.ready);
+    if (!pod) return reply.code(409).send({ error: "that worker is already gone; Temporal is retrying the step" });
+    await kubernetes.deletePod(pod.name);
+    return { pod: pod.name };
   });
 }
 
 /** ErpDemoSource over Postgres (ERP_DEMO_URL, the erp_demo role). */
 export function pgErpDemoSource(connectionString: string): ErpDemoSource {
   const pool = new pg.Pool({ connectionString, max: 2 });
-  const attempt = async (template: string) => {
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      // No table lock (erp_demo may only insert): two racing clones collide on the primary key,
-      // and the loser retries once with the next id.
-      const { rows } = await client.query<{ n: number }>("SELECT coalesce(max(substring(id from 5)::int), 0) + 1 AS n FROM erp.invoices WHERE id ~ '^INV-[0-9]+$'");
-      const n = rows[0]!.n;
-      const invoiceId = `INV-${n}`;
-      const exceptionId = `EX-${n}`;
-      const copied = await client.query(
-        `INSERT INTO erp.invoices (id, vendor_id, vendor_invoice_number, po_id, invoice_date, due_date, total_cents, status, remit_bank_last4, document_path)
-         SELECT $2, vendor_id, vendor_invoice_number, po_id, invoice_date, due_date, total_cents, 'exception', remit_bank_last4, document_path
-         FROM erp.invoices WHERE id = $1`,
-        [template, invoiceId],
-      );
-      if (copied.rowCount !== 1) throw new Error(`template invoice ${template} not found`);
-      await client.query(
-        `INSERT INTO erp.invoice_lines (invoice_id, line_no, po_line_no, item_id, description, quantity, uom, unit_price_cents)
-         SELECT $2, line_no, po_line_no, item_id, description, quantity, uom, unit_price_cents FROM erp.invoice_lines WHERE invoice_id = $1`,
-        [template, invoiceId],
-      );
-      await client.query(
-        `INSERT INTO erp.exceptions (id, invoice_id, raised_on, reason_codes, status)
-         SELECT $3, $2, current_date, reason_codes, 'open' FROM erp.exceptions WHERE invoice_id = $1 ORDER BY raised_on DESC LIMIT 1`,
-        [template, invoiceId, exceptionId],
-      );
-      await client.query("COMMIT");
-      return { invoiceId, exceptionId };
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
-    }
-  };
   return {
-    async cloneException(template) {
+    async resetException(invoiceId) {
+      const client = await pool.connect();
       try {
-        return await attempt(template);
+        await client.query("BEGIN");
+        const { rows } = await client.query<{ id: string }>("SELECT id FROM erp.exceptions WHERE invoice_id = $1 ORDER BY raised_on DESC LIMIT 1", [invoiceId]);
+        const exceptionId = rows[0]?.id;
+        if (!exceptionId) throw new Error(`no exception for ${invoiceId}`);
+        await client.query("DELETE FROM erp.outbox WHERE invoice_id = $1", [invoiceId]);
+        await client.query("DELETE FROM erp.resolutions WHERE invoice_id = $1", [invoiceId]);
+        await client.query("UPDATE erp.exceptions SET status = 'open' WHERE id = $1", [exceptionId]);
+        await client.query("UPDATE erp.invoices SET status = 'exception' WHERE id = $1", [invoiceId]);
+        await client.query("COMMIT");
+        return { invoiceId, exceptionId };
       } catch (error) {
-        if ((error as { code?: string }).code === "23505") return attempt(template); // unique violation: take the next id
+        await client.query("ROLLBACK").catch(() => undefined);
         throw error;
+      } finally {
+        client.release();
       }
     },
   };

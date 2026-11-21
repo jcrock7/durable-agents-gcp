@@ -34,12 +34,17 @@ import {
   readInvoicePrompt,
   splitNarration,
 } from "./prompts/index.js";
-import { addCall, emptyProgress, resumeFrom } from "./progress.js";
+import { addCall, emptyProgress, resumeFrom, type Progress } from "./progress.js";
 import { checkCitations } from "./route.js";
 import { InvoiceFieldsSchema, MessageSchema, ProposalSchema, type Action, type InvoiceFields, type MessageDraft, type Proposal } from "./schemas.js";
 import type { Adjustment, Evidence, InvoiceFacts, MatchResult, Recipient, Usage } from "./types.js";
 
 const EXCERPT_CHARS = 1_500;
+/** What the model sees of a tool result (McpToolbox's default maxResultChars). */
+const MODEL_RESULT_CHARS = 20_000;
+/** An evidence excerpt from model-facing text: the same as resultText(result, EXCERPT_CHARS). */
+const excerptOf = (text: string) => (text.length > EXCERPT_CHARS ? `${text.slice(0, EXCERPT_CHARS)}
+[cut at ${EXCERPT_CHARS} characters]` : text);
 const RECEIVING_ADDRESS = "receiving@company.example";
 
 export interface ActivityDeps {
@@ -168,13 +173,15 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
       // A retry resumes from the last attempt's heartbeat details: tool calls it already made are
       // answered from the replay cache instead of the server (Live Run view, failover demo).
       const resume = resumeFrom(Context.current().info.heartbeatDetails);
-      let progress = emptyProgress("Gathering evidence");
+      // Keep the earlier attempt's results in this attempt's heartbeats from the start, so a second kill loses nothing.
+      let progress: Progress = { ...emptyProgress("Gathering evidence"), results: [...resume.replay].map(([key, text]) => ({ key, text })) };
       let report: (details: unknown) => void = () => {};
       const cite = (record: ToolCallRecord, text: string) =>
-        evidence.push({ ref: `E${evidence.length + 1}`, source: record.ref, args: record.args, excerpt: text.slice(0, EXCERPT_CHARS) || "(no rows)" });
+        evidence.push({ ref: `E${evidence.length + 1}`, source: record.ref, args: record.args, excerpt: excerptOf(text) || "(no rows)" });
       const onResult = (record: ToolCallRecord, result: McpCallResult) => {
         const ok = record.caller === "model" && record.outcome === "ok";
-        const text = ok ? resultText(result, EXCERPT_CHARS) : undefined;
+        // Cache what the model saw (the toolbox's default cut), so a replayed call gives it the same input.
+        const text = ok ? resultText(result, MODEL_RESULT_CHARS) : undefined;
         if (text !== undefined) cite(record, text);
         progress = addCall(progress, record, text);
         report(progress);

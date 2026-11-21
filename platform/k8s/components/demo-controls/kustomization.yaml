@@ -2,7 +2,8 @@
 #   - 2 worker replicas, so killing one fails the case over to a worker that is already running
 #   - DEMO_CONTROLS=true on the API: /api/demo/sample-case and /api/demo/kill-worker
 #   - a Role that lets the API delete (only) pods, for the kill
-#   - the API connects to the erp database as erp_demo (insert-only on invoices, lines, exceptions)
+#   - the API connects to the erp database as erp_demo, which may only reset the sample invoice
+#     (status updates on invoices/exceptions, deleting its earlier resolutions and outbox rows)
 # The base stays at 1 worker and no demo routes; an overlay opts in with `components:`.
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component

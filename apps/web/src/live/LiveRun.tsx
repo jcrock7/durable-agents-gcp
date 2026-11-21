@@ -18,6 +18,8 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
   const [focus, setFocus] = useState<string>();
   const [toast, setToast] = useState<string>();
   const [killing, setKilling] = useState(false);
+  /** The worker identity just killed: the button stays off until the step is running somewhere else. */
+  const [killed, setKilled] = useState<string>();
   const view = live.view;
 
   useEffect(() => {
@@ -59,8 +61,11 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
     );
   }
 
+  const runningOn = view.pending.find((p) => p.state === "STARTED")?.lastWorkerIdentity;
+  const canKill = view.canKill && !killing && (killed === undefined || runningOn !== killed);
   const kill = async () => {
     setKilling(true);
+    setKilled(runningOn);
     try {
       const r = await postJson<{ pod: string }>("/api/demo/kill-worker", { workflowId: props.workflowId });
       setToast(`⚡ Killed ${r.pod}. Temporal will retry the step on another worker.`);
@@ -109,7 +114,7 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
           ⚙ Engine · {view.events.length}
         </button>
         {props.demoControls && live.mode === "live" && (
-          <button type="button" className="btn sm live-kill" disabled={!view.canKill || killing} title={view.canKill ? "Delete the worker pod running this step" : "Only during a model step"} onClick={() => void kill()}>
+          <button type="button" className="btn sm live-kill" disabled={!canKill} title={canKill ? "Delete the worker pod running this step" : "Only during a model step"} onClick={() => void kill()}>
             ⚡ Kill worker
           </button>
         )}

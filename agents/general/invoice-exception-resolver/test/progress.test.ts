@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { connectTransport, type McpConnection, type ToolCallRecord } from "@agents/agent-kit";
+import { connectTransport, replayKey, type McpConnection, type ToolCallRecord } from "@agents/agent-kit";
 import { MockActivityEnvironment } from "@temporalio/testing";
 import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
@@ -63,7 +63,8 @@ describe("gatherEvidence resume", () => {
       for (const name of ["get_purchase_order", "get_vendor"]) {
         s.registerTool(name, { description: name, inputSchema: { po_id: z.string().optional(), vendor_id: z.string().optional() } }, async (args) => {
           hits[name] = (hits[name] ?? 0) + 1;
-          return { content: [{ type: "text", text: JSON.stringify({ name, ...args }) }] };
+          // get_vendor returns more than an evidence excerpt (1,500 chars) but less than the model sees (20,000).
+          return { content: [{ type: "text", text: JSON.stringify({ name, ...args, ...(name === "get_vendor" ? { notes: "x".repeat(3_000) } : {}) }) }] };
         });
       }
       return s;
@@ -88,6 +89,8 @@ describe("gatherEvidence resume", () => {
     const uninterrupted = await first.run(a1.gatherEvidence, input);
 
     const second = new MockActivityEnvironment({ heartbeatDetails: details });
+    const beats: unknown[] = [];
+    second.on("heartbeat", (d: unknown) => beats.push(d));
     const fast2 = script();
     const a2 = createActivities({ models: { fast: fast2, smart: fast2 }, connect });
     const resumed = await second.run(a2.gatherEvidence, input);
@@ -95,5 +98,13 @@ describe("gatherEvidence resume", () => {
     expect(hits).toEqual({ get_purchase_order: 1, get_vendor: 1 });
     expect(resumed.evidence).toEqual(uninterrupted.evidence);
     expect(resumed.calls.filter((c: ToolCallRecord) => c.replayed)).toHaveLength(2);
+
+    // The model gets the same tool results it got the first time, not the shorter evidence excerpt.
+    const toolResults = (m: MockLanguageModelV4) => JSON.stringify(m.doGenerateCalls[1]!.prompt.filter((p) => p.role === "tool"));
+    expect(toolResults(fast2)).toBe(toolResults(fast));
+    expect(resumeFrom(details).replay.get(replayKey("erp-read:get_vendor", { vendor_id: "V-1" }))!.length).toBeGreaterThan(3_000);
+
+    // A resumed attempt keeps the earlier results in its own heartbeats from the start, so a second kill loses nothing.
+    expect(resumeFrom(beats[0]).replay.size).toBe(2);
   });
 });

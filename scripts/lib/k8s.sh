@@ -201,6 +201,22 @@ ensure_erp_secrets() {
 # into the docs MCP server image alongside the documents, so rows and documents always agree.
 #   load_erp          load if the ERP has no tables yet
 #   load_erp force    drop and reload (resets every resolution and outbox message)
+# The demo-controls role's grants (the same as the seed's), applied to an ERP loaded before the role
+# existed. Idempotent; skipped until CloudNativePG has created the role.
+grant_erp_demo() {
+  kubectl -n "$NS" exec -i "$1" -c postgres -- psql -q -v ON_ERROR_STOP=1 -d erp >/dev/null <<'SQL'
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'erp_demo') THEN
+    GRANT USAGE ON SCHEMA erp TO erp_demo;
+    GRANT SELECT ON ALL TABLES IN SCHEMA erp TO erp_demo;
+    GRANT UPDATE (status) ON erp.invoices, erp.exceptions TO erp_demo;
+    GRANT DELETE ON erp.resolutions, erp.outbox TO erp_demo;
+  END IF;
+END $$;
+SQL
+}
+
 load_erp() {
   local primary loaded
   kubectl -n "$NS" wait database.postgresql.cnpg.io/erp --for=jsonpath='{.status.applied}'=true --timeout=5m >/dev/null \
@@ -211,6 +227,7 @@ load_erp() {
   loaded="$(kubectl -n "$NS" exec "$primary" -c postgres -- psql -tAq erp -c "select to_regclass('erp.invoices') is not null")"
   if [[ "$loaded" == "t" && "${1:-}" != "force" ]]; then
     log "synthetic ERP already loaded (scripts/local/erp-load.sh reloads it)"
+    grant_erp_demo "$primary"
     return 0
   fi
   log "loading the synthetic ERP into database erp"

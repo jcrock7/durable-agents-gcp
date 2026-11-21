@@ -45,6 +45,11 @@ const workers = await Promise.all(
       // On SIGTERM (pod deletion, Spot preemption) stop polling and give running activities time
       // to finish. Anything still running is retried on another worker.
       shutdownGraceTime: "20 seconds",
+      // Send heartbeat details within a second (the default throttle is 0.8 × heartbeatTimeout, 16s):
+      // the Live Run view shows tool calls from them, and a retry resumes from them.
+      maxHeartbeatThrottleInterval: "1 second",
+      // After a worker dies, move its cases' tasks (and the portal's queries) off its sticky queue quickly.
+      stickyQueueScheduleToStartTimeout: "3 seconds",
       ...workflowCode,
     });
   }),

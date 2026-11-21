@@ -1,9 +1,9 @@
 // Live Run data: polls /api/cases/:id/live every second while the run is RUNNING (appending engine
 // events after a cursor), or, for a finished run, loads it once and plays it back on a clock.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getJson, type EngineEvent, type LiveResponse } from "../api.js";
+import { getJson, type LiveResponse } from "../api.js";
 import type { LiveGraph } from "./graphs.js";
-import { reduceLive, replayFrames, type LiveView, type ReplayFrame } from "./reduce.js";
+import { mergeLive, reduceLive, replayFrames, type LiveView, type ReplayFrame } from "./reduce.js";
 
 export type Speed = 1 | 4 | 16;
 export const POLL_MS = 1_000;
@@ -32,23 +32,23 @@ export function useLive(workflowId: string, graph: LiveGraph | undefined): LiveH
   const [position, setPosition] = useState(0);
   const [speed, setSpeed] = useState<Speed>(4);
   const [paused, setPaused] = useState(false);
-  const events = useRef<EngineEvent[]>([]);
+  const last = useRef<LiveResponse | undefined>(undefined);
 
   // Load, then poll while running.
   useEffect(() => {
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let cursor = 0;
-    events.current = [];
+    last.current = undefined;
     setMode("loading");
     setRes(undefined);
     const tick = async (first: boolean) => {
       try {
         const next = await getJson<LiveResponse>(`/api/cases/${workflowId}/live?after=${cursor}`);
         if (stop) return;
-        events.current = [...events.current, ...next.events];
+        const merged = mergeLive(last.current, next);
+        last.current = merged;
         cursor = next.cursor;
-        const merged = { ...next, events: events.current };
         setError(undefined);
         if (first && next.status !== "RUNNING") {
           setFrames(replayFrames(merged));

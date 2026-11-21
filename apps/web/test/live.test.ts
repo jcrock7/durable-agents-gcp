@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { EngineEvent, LiveResponse, PendingActivity } from "../src/api.js";
 import { LIVE_GRAPHS, toolPhrase } from "../src/live/graphs.js";
-import { reduceLive, replayFrames } from "../src/live/reduce.js";
+import { mergeLive, reduceLive, replayFrames } from "../src/live/reduce.js";
 
 const G = LIVE_GRAPHS["invoice-exception-resolver"]!;
 const T0 = Date.parse("2026-11-20T12:00:00Z");
@@ -155,5 +155,24 @@ describe("replayFrames", () => {
     expect(frames.at(-1)!.res.status).toBe("COMPLETED");
     expect(frames[0]!.res.status).toBe("RUNNING");
     for (let i = 1; i < frames.length; i++) expect(frames[i]!.at).toBeGreaterThanOrEqual(frames[i - 1]!.at);
+  });
+});
+
+describe("mergeLive", () => {
+  it("keeps the last known state when a poll's query fails, and appends events", () => {
+    const first = running();
+    const next: LiveResponse = { ...running(), state: null, events: [ev(11, 30, "ActivityTaskStarted", "gatherEvidence")], cursor: 11 };
+    const merged = mergeLive(first, next);
+    expect(merged.state).toBe(first.state);
+    expect(merged.events.map((e) => e.id)).toEqual([5, 6, 7, 8, 9, 10, 11]);
+    expect(merged.cursor).toBe(11);
+    const fresh = mergeLive(merged, { ...running(), events: [], state: { stage: "proposing" } });
+    expect(fresh.state).toEqual({ stage: "proposing" });
+  });
+});
+
+describe("canKill after a kill", () => {
+  it("is false while the model activity is only scheduled (waiting for a retry)", () => {
+    expect(reduceLive(G, running({ state: "SCHEDULED" }), T0).canKill).toBe(false);
   });
 });

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Destroy the per-session cluster layer, then check for anything still billing.
 # The foundation layer (registry, secrets, backups) is kept.
+# The workloads' namespace is deleted first, so the endpoint groups and disks GKE created for it
+# go with it rather than outliving the cluster.
 # With APP_HOSTNAME set, its Cloudflare DNS record is deleted first, so the name never points at
 # an IP this project no longer holds (scripts/lib/dns.sh).
 #
@@ -70,7 +72,35 @@ EOF
   # and they would block deleting the network.
   log "deleting Kubernetes Gateways so GKE removes their load balancers"
   kubectl delete gateway --all --all-namespaces --ignore-not-found --wait=true --timeout=5m || true
+
+  # Delete the workloads while the cluster can still clean up after them. Deleting the cluster
+  # alone leaves behind what GKE created outside it: the Services' network endpoint groups (which
+  # then block deleting the network) and the volume claims' disks (which keep billing).
+  log "deleting namespace agents so GKE removes its endpoint groups and disks"
+  kubectl delete namespace agents --ignore-not-found --wait=true --timeout=10m \
+    || warn "namespace agents not fully deleted; leftovers are listed at the end"
+  kubectl wait --for=delete persistentvolume --all --timeout=5m >/dev/null 2>&1 \
+    || warn "some disks are still being released; leftovers are listed at the end"
 fi
+
+# Network endpoint groups on the cluster's network: GKE removes them a minute or two after their
+# Services go. Wait for that, then delete any that remain (also covers a cluster that was already
+# deleted, for example by the cost guardrails), because one leftover blocks deleting the network.
+vpc="${TF_VAR_cluster_name}-vpc"
+list_negs() {
+  gcloud compute network-endpoint-groups list --project "$PROJECT_ID" \
+    --filter="network~/${vpc}\$" --format='value(name,zone.basename())' 2>/dev/null
+}
+for _ in $(seq 1 18); do
+  [[ -z "$(list_negs)" ]] && break
+  sleep 10
+done
+while read -r neg zone; do
+  [[ -n "$neg" ]] || continue
+  log "deleting leftover network endpoint group ${neg} (${zone})"
+  gcloud compute network-endpoint-groups delete "$neg" --zone "$zone" --project "$PROJECT_ID" --quiet >/dev/null 2>&1 \
+    || warn "could not delete ${neg} in ${zone}; the network delete below will fail until it is gone"
+done < <(list_negs)
 
 # Remove the DNS record before the IP it points at is released.
 if dns_managed; then

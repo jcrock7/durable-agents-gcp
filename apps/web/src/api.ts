@@ -60,6 +60,71 @@ export interface CasePage {
 export interface Me {
   user: string;
   source?: "iap" | "local";
+  /** Demo controls (sample case, kill worker) are on in this deployment. */
+  demoControls?: boolean;
+  temporalUiUrl?: string;
+}
+
+// Live Run view: GET /api/cases/:id/live (apps/api/src/live.ts).
+export interface EngineEvent {
+  id: number;
+  at: string;
+  type: string;
+  attrs: Record<string, string | number>;
+  activityType?: string;
+  kind?: "retry" | "failover" | "timer" | "worker";
+}
+
+export interface LiveToolCall {
+  id: string;
+  ref: string;
+  server: string;
+  tool: string;
+  caller: "workflow" | "activity" | "model";
+  args: Record<string, unknown>;
+  outcome: "ok" | "error" | "refused";
+  durationMs: number;
+  at: string;
+  replayed?: true;
+}
+
+export interface PendingActivity {
+  activityId: string;
+  activityType: string;
+  attempt: number;
+  state: string;
+  scheduledTime?: string;
+  lastStartedTime?: string;
+  lastWorkerIdentity?: string;
+  lastFailure?: { message: string; timeoutType?: string };
+  /** Heartbeat details: { v: 1, note?, calls: LiveToolCall[], results } from the agent's activities. */
+  heartbeat?: unknown;
+  kind?: "retry" | "failover";
+}
+
+export interface LiveState {
+  stage?: string;
+  invoiceId?: string;
+  timeline?: Array<{ name: string; at: string; detail: string; state: "done" | "now" | "error"; narration?: string }>;
+  toolCalls?: LiveToolCall[];
+  usage?: Array<{ step: string; model: string; inputTokens: number; outputTokens: number; costUsd?: number }>;
+  evidence?: Array<{ ref: string; source: string; args?: Record<string, unknown>; excerpt: string }>;
+  invoice?: { totalDue?: string; vendorInvoiceNumber?: string };
+  facts?: { vendorName?: string };
+  match?: { exceptionTypes?: string[] };
+  [key: string]: unknown;
+}
+
+export interface LiveResponse {
+  status: string;
+  runId: string;
+  startTime: string;
+  closeTime?: string;
+  workerIdentity?: string;
+  state: LiveState | null;
+  events: EngineEvent[];
+  pending: PendingActivity[];
+  cursor: number;
 }
 
 // The workflows' caseState / progress query results: shapes owned by the agents.

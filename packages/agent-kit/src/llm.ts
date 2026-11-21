@@ -24,8 +24,28 @@ export function createModels(options: LiteLLMOptions): Record<ModelAlias, Langua
     baseURL: options.baseURL ?? process.env.LITELLM_BASE_URL ?? "http://litellm:4000/v1",
     apiKey: options.apiKey,
     supportsStructuredOutputs: true,
+    fetch: timeoutFetch(MODEL_REQUEST_TIMEOUT_MS),
   });
   return { fast: provider.chatModel("fast"), smart: provider.chatModel("smart") };
+}
+
+/**
+ * The longest one model request may take. A request that hangs (seen on k3d: the gateway's call to
+ * Vertex never answered) would otherwise run until the activity's 180s startToCloseTimeout, because
+ * withHeartbeat keeps the activity looking alive. Failing at 60s lets Temporal retry it.
+ */
+export const MODEL_REQUEST_TIMEOUT_MS = 60_000;
+
+/** `fetch` that fails a request taking longer than `ms`, while still honouring the caller's own abort signal. */
+export function timeoutFetch(ms: number, base: typeof fetch = fetch): typeof fetch {
+  return (input, init) => {
+    const timer = AbortSignal.timeout(ms);
+    const timedOut = new Error(`model request timed out after ${ms / 1000}s`);
+    const signal = AbortSignal.any([init?.signal, timer].filter((s): s is AbortSignal => !!s));
+    return base(input, { ...init, signal }).catch((error: unknown) => {
+      throw timer.aborted && !init?.signal?.aborted ? timedOut : error;
+    });
+  };
 }
 
 /** Settings shared by every model call made inside an activity. */

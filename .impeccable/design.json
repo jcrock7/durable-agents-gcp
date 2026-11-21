@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-21T00:00:00Z",
+  "title": "Design System: Agent Operations",
+  "extensions": {
+    "colorMeta": {
+      "action-blue": { "role": "primary", "displayName": "Action Blue", "canonical": "#0B5CAD", "tonalRamp": ["#04213F", "#06335F", "#08467F", "#0B5CAD", "#3F84CC", "#86B8F4", "#B9D0EE", "#E8F0FA"] },
+      "action-blue-hover": { "role": "primary", "displayName": "Action Blue, Hover", "canonical": "#08467F" },
+      "action-blue-wash": { "role": "primary", "displayName": "Action Blue Wash", "canonical": "#E8F0FA" },
+      "decision-amber": { "role": "secondary", "displayName": "Decision Amber", "canonical": "#E39A1B", "tonalRamp": ["#1B1200", "#4A2A00", "#8F4C00", "#B87410", "#E39A1B", "#F2B45A", "#EDCB97", "#FDF4E7"] },
+      "decision-amber-text": { "role": "secondary", "displayName": "Decision Amber Text", "canonical": "#8F4C00" },
+      "decision-amber-wash": { "role": "secondary", "displayName": "Decision Amber Wash", "canonical": "#FDF4E7" },
+      "decision-amber-line": { "role": "secondary", "displayName": "Decision Amber Line", "canonical": "#EDCB97" },
+      "resolved-green": { "role": "tertiary", "displayName": "Resolved Green", "canonical": "#1E7A34", "tonalRamp": ["#0A2A13", "#12451F", "#1E7A34", "#2F9A4A", "#6DD58C", "#9BDFAE", "#B7DFC1", "#EEF7F0"] },
+      "stop-red": { "role": "tertiary", "displayName": "Stop Red", "canonical": "#A8281F", "tonalRamp": ["#331613", "#5E1711", "#851F18", "#A8281F", "#D0554B", "#F0958C", "#F6C4BE", "#FBE9E7"] },
+      "bar-slate": { "role": "tertiary", "displayName": "Bar Slate", "canonical": "#8FA3BF", "tonalRamp": ["#1E2633", "#3A4759", "#5D6F8A", "#7689A6", "#8FA3BF", "#B2C0D4", "#D3DBE6", "#EEF1F6"] },
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#161B22", "tonalRamp": ["#0E1116", "#161B22", "#2C333C", "#454C55", "#5A626C", "#9AA4AF", "#C1C7CD", "#DDE1E6"] },
+      "desk-grey": { "role": "neutral", "displayName": "Desk Grey", "canonical": "#F2F4F7" },
+      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#FFFFFF" },
+      "paper-shade": { "role": "neutral", "displayName": "Paper Shade", "canonical": "#F7F8FA" },
+      "rule": { "role": "neutral", "displayName": "Rule", "canonical": "#DDE1E6" },
+      "rule-strong": { "role": "neutral", "displayName": "Rule Strong", "canonical": "#C1C7CD" },
+      "rail": { "role": "neutral", "displayName": "Rail", "canonical": "#161B22" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The headline amount on a case; KPI figures at 30px, agent header figures at 24px." },
+      "headline": { "displayName": "Headline", "purpose": "The question a case page asks, and the agent name." },
+      "title": { "displayName": "Title", "purpose": "Decision band subject, dialog titles, drill-down headings." },
+      "body": { "displayName": "Body", "purpose": "Default text and tables." },
+      "body-reading": { "displayName": "Body Reading", "purpose": "The agent's recommendation and other prose read in full, max 76ch." },
+      "label": { "displayName": "Label", "purpose": "Uppercase section labels, table headers and definition terms." },
+      "mono": { "displayName": "Mono", "purpose": "Citation tags and identifiers or raw output in the audit trail only." }
+    },
+    "shadows": [
+      { "name": "floating-menu", "value": "0 12px 32px rgba(0, 0, 0, 0.18)", "purpose": "The user menu." },
+      { "name": "dialog", "value": "0 24px 64px rgba(0, 0, 0, 0.3)", "purpose": "The decision dialog, over a rgba(10, 16, 24, 0.55) backdrop." },
+      { "name": "docked-drawer", "value": "0 -6px 20px rgba(0, 0, 0, 0.18)", "purpose": "The live run view's event drawer." }
+    ],
+    "motion": [
+      { "name": "modal-in", "value": "0.16s ease-out, opacity 0 to 1 with an 8px rise", "purpose": "Decision dialog entry; skipped under prefers-reduced-motion." },
+      { "name": "live-pulse", "value": "1.2s ease-in-out infinite, opacity to 0.3 at 50%", "purpose": "Marks a run that is live; skipped under prefers-reduced-motion." }
+    ],
+    "breakpoints": [
+      { "name": "rail-collapse", "value": "900px" },
+      { "name": "phone", "value": "720px" },
+      { "name": "sheet", "value": "640px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one primary action of a decision.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Approve and Post to ERP</button>",
+      "css": ".ds-btn { min-height: 44px; padding: 0 18px; border-radius: 6px; font: 600 15px 'IBM Plex Sans', system-ui, sans-serif; border: 1px solid #C1C7CD; background: #FFFFFF; color: #161B22; white-space: nowrap; cursor: pointer; } .ds-btn:focus-visible { outline: 2px solid #0B5CAD; outline-offset: 2px; } .ds-btn:disabled { opacity: 0.55; cursor: not-allowed; } .ds-btn-primary { border-color: #0B5CAD; background: #0B5CAD; color: #FFFFFF; }"
+    },
+    {
+      "name": "Default Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Secondary actions; an ellipsis means it opens a dialog first.",
+      "html": "<button class=\"ds-btn2\">Send Back to Agent…</button>",
+      "css": ".ds-btn2 { min-height: 44px; padding: 0 18px; border-radius: 6px; font: 600 15px 'IBM Plex Sans', system-ui, sans-serif; border: 1px solid #C1C7CD; background: #FFFFFF; color: #161B22; white-space: nowrap; cursor: pointer; } .ds-btn2:focus-visible { outline: 2px solid #0B5CAD; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Tag",
+      "kind": "chip",
+      "refersTo": "status-tag",
+      "description": "Status as a squared marker and a label, never a pill.",
+      "html": "<span class=\"ds-tag ds-tag-warn\">Needs Decision</span> <span class=\"ds-tag ds-tag-ok\">Resolved</span> <span class=\"ds-tag ds-tag-crit\">Blocked</span>",
+      "css": ".ds-tag { display: inline-flex; align-items: center; gap: 8px; font: 600 13px 'IBM Plex Sans', system-ui, sans-serif; padding: 3px 10px 3px 8px; border-radius: 4px; white-space: nowrap; border: 1px solid #C1C7CD; background: #FFFFFF; color: #161B22; } .ds-tag::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: #454C55; flex: none; } .ds-tag-warn::before { background: #E39A1B; } .ds-tag-ok::before { background: #1E7A34; } .ds-tag-crit::before { background: #A8281F; }"
+    },
+    {
+      "name": "Citation Tag",
+      "kind": "chip",
+      "refersTo": "citation",
+      "description": "Links a sentence in the recommendation to its evidence.",
+      "html": "<span class=\"ds-cite\">E1</span> <span class=\"ds-cite\">E3</span>",
+      "css": ".ds-cite { font: 500 12px 'IBM Plex Mono', ui-monospace, monospace; background: #E8F0FA; color: #0B5CAD; border-radius: 3px; padding: 1px 5px; white-space: nowrap; }"
+    },
+    {
+      "name": "KPI Tile",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "A flat ruled panel holding one labelled figure.",
+      "html": "<div class=\"ds-kpi\"><span class=\"ds-kpi-lab\">Awaiting Decision</span><b>$1,023.40</b><span class=\"ds-kpi-sub\">Value of the adjustments waiting on a person</span></div>",
+      "css": ".ds-kpi { background: #FFFFFF; border: 1px solid #DDE1E6; border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #161B22; font-variant-numeric: tabular-nums; max-width: 260px; } .ds-kpi-lab { font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #5A626C; } .ds-kpi b { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; } .ds-kpi-sub { font-size: 14px; color: #454C55; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Fields and search.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search by case or vendor\" />",
+      "css": ".ds-input { min-height: 44px; padding: 0 12px; border: 1px solid #C1C7CD; border-radius: 6px; font: 400 15px 'IBM Plex Sans', system-ui, sans-serif; background: #FFFFFF; color: #161B22; width: 260px; } .ds-input:focus-visible { outline: 2px solid #0B5CAD; outline-offset: 2px; }"
+    },
+    {
+      "name": "Sidebar Item",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Dark rail navigation with a monogram, squared status dot and amber count.",
+      "html": "<div class=\"ds-rail\"><button class=\"ds-nav ds-nav-current\"><span class=\"ds-mono\">IR<i></i></span><span class=\"ds-grow\">Invoice Resolver</span><span class=\"ds-count\">1</span></button><button class=\"ds-nav\"><span class=\"ds-mono\">RA</span><span class=\"ds-grow\">Research Analyst</span></button></div>",
+      "css": ".ds-rail { background: #161B22; padding: 12px; width: 236px; display: flex; flex-direction: column; gap: 4px; } .ds-nav { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 6px 10px; border: 0; border-radius: 6px; text-align: left; color: #C9D0D8; background: transparent; font: 400 14.5px 'IBM Plex Sans', system-ui, sans-serif; cursor: pointer; } .ds-nav:hover { background: rgba(255, 255, 255, 0.06); } .ds-nav:focus-visible { outline: 2px solid #6CA8F0; outline-offset: 2px; } .ds-nav-current { background: #2C333C; color: #FFFFFF; font-weight: 500; } .ds-mono { position: relative; flex: none; width: 24px; height: 24px; border-radius: 4px; border: 1px solid #39414B; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #F9FAFB; } .ds-mono i { position: absolute; right: -3px; bottom: -3px; width: 8px; height: 8px; border-radius: 2px; background: #E39A1B; border: 1px solid #161B22; } .ds-grow { flex: 1 1 auto; } .ds-count { background: #E39A1B; color: #1B1200; font-weight: 600; font-size: 12px; border-radius: 3px; padding: 0 6px; line-height: 18px; }"
+    },
+    {
+      "name": "Step Strip",
+      "kind": "custom",
+      "description": "The spine of the case story: one ruled panel, one clickable cell per step.",
+      "html": "<ol class=\"ds-steps\"><li><button class=\"ds-step ds-step-sel\"><span class=\"ds-step-n\"><i>✓</i>18:39:52</span><b>Price Variance Found</b><span class=\"ds-step-r\">Line 1 billed at $39.67 a unit; PO says $33.65</span></button></li><li><button class=\"ds-step\"><span class=\"ds-step-n\"><i>✓</i>+9s</span><b>Gather Evidence</b><span class=\"ds-step-r\">5 items · 4 model steps</span></button></li><li><button class=\"ds-step ds-step-now\"><span class=\"ds-step-n\"><i>6</i>Now</span><b>Your Decision</b><span class=\"ds-step-r\">Nothing posts until you approve</span></button></li></ol>",
+      "css": ".ds-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(150px, 1fr)); background: #FFFFFF; border: 1px solid #DDE1E6; border-radius: 8px; overflow: hidden; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #161B22; } .ds-steps li { display: flex; min-width: 0; } .ds-steps li + li { border-left: 1px solid #DDE1E6; } .ds-step { flex: 1 1 auto; padding: 16px 16px 18px; display: flex; flex-direction: column; gap: 4px; border: 0; background: none; color: inherit; text-align: left; font: inherit; cursor: pointer; } .ds-step:hover { background: #F7F8FA; } .ds-step:focus-visible { outline: 2px solid #0B5CAD; outline-offset: -2px; } .ds-step-n { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #5A626C; font-weight: 500; } .ds-step-n i { width: 18px; height: 18px; border-radius: 50%; background: #1E7A34; color: #FFFFFF; font-style: normal; font-size: 11px; font-weight: 700; display: grid; place-items: center; } .ds-step b { font-size: 15px; font-weight: 600; } .ds-step-r { font-size: 14px; color: #454C55; line-height: 1.4; } .ds-step-now, .ds-step-now:hover { background: #FDF4E7; } .ds-step-now .ds-step-n { color: #8F4C00; } .ds-step-now .ds-step-n i { background: #E39A1B; color: #1B1200; } .ds-step-sel { box-shadow: inset 0 -3px 0 #0B5CAD; }"
+    },
+    {
+      "name": "Decision Band",
+      "kind": "custom",
+      "refersTo": "decision-band",
+      "description": "The waiting decision at the top of the overview, with one Review button.",
+      "html": "<div class=\"ds-need\"><div class=\"ds-need-q\"><span class=\"ds-need-lab\">1 decision waiting</span><b>$1,023.40 Price Variance on INV-20267</b><span>Invoice Resolver · Saltmarsh Lab Supply</span></div><button class=\"ds-need-btn\">Review</button></div>",
+      "css": ".ds-need { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; background: #FDF4E7; border: 1px solid #EDCB97; border-radius: 8px; padding: 18px 22px; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #161B22; } .ds-need-q { flex: 1 1 320px; display: flex; flex-direction: column; gap: 2px; } .ds-need-lab { font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #8F4C00; } .ds-need-q b { font-size: 18px; font-weight: 600; } .ds-need-q span:last-child { color: #454C55; } .ds-need-btn { min-height: 44px; padding: 0 18px; border-radius: 6px; font: 600 15px 'IBM Plex Sans', system-ui, sans-serif; border: 1px solid #0B5CAD; background: #0B5CAD; color: #FFFFFF; cursor: pointer; } .ds-need-btn:focus-visible { outline: 2px solid #0B5CAD; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Case File",
+    "overview": "Every screen reads like a well-kept case folder. The decision sits on top: what was found, what the agent recommends, and what approving will do. Evidence, the policy that applies and the options the agent weighed are clipped directly behind it, and the full audit trail is at the back for anyone who wants to check. Nothing in the folder is there for show.\n\nThe voice is quietly confident. Authority comes from alignment, ruled lines and exact numbers, with a little warmth in the copy and generous enough spacing that it does not feel like a compliance tool. Surfaces are flat white paper on a cool grey desk, separated by thin rules. Colour is scarce and always means something: one blue for action, a small set of status colours, and a per-agent identity colour.\n\nThe system rejects two looks by name. It is not the pill-bubble AI look: no rounded pill chips, gradients, glows or sparkle icons. And it is not a chatbot: agents are presented through cases, steps and decisions, never as chat personas or conversations.",
+    "keyCharacteristics": [
+      "Decision first, proof one drill-down away.",
+      "Flat ruled surfaces; depth only where something floats.",
+      "Squared 8px status markers in place of coloured pills.",
+      "One accent blue; status colours carry status and nothing else.",
+      "Tabular numerals everywhere, so figures align down a column.",
+      "Light and dark themes from one token set."
+    ],
+    "rules": [
+      { "name": "The Signal Rule", "body": "Status colours appear only where a status is being reported. Never tint a heading, icon or panel in green, amber or red for emphasis.", "section": "colors" },
+      { "name": "The Identity Rule", "body": "Agent colours identify an agent and are never used for status.", "section": "colors" },
+      { "name": "The Title Case Rule", "body": "Labels in titles, tabs, headings, buttons and tags use title case (\"Needs Decision\", \"Send Back to Agent\"). Sentences stay in sentence case.", "section": "typography" },
+      { "name": "The Mono Rule", "body": "Mono is reserved for citation tags and identifiers or raw output in the audit trail. Never set amounts, headings or body copy in mono.", "section": "typography" },
+      { "name": "The Floats-Only Rule", "body": "A shadow means the element is floating above the page and can be dismissed. Panels, cards, tiles and buttons never carry one.", "section": "elevation" },
+      { "name": "The Square Marker Rule", "body": "Status is a small squared marker (8px, 2px radius) beside a text label inside a 4px-radius tag. It is never a fully rounded pill.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do lead every case with the decision and state in one sentence what approving, sending back or escalating will do.",
+      "Do report status with a squared 8px marker and a text label; colour is never the only signal.",
+      "Do keep one primary button per decision, and move it to the safer action when a rule finds a conflict.",
+      "Do use title case for labels in titles, tabs, headings, buttons and tags.",
+      "Do separate surfaces with 1px rules and tone; reserve shadows for menus, dialogs and docked drawers.",
+      "Do give every theme-dependent colour a token in `docs/design/agent-portal/tokens.css`, defined for light and dark.",
+      "Do keep controls at 44px (36px for compact ones) and focus visible with the 2px Action Blue outline."
+    ],
+    "donts": [
+      "Don't drift into the pill-bubble AI look: no fully rounded pill chips, gradients, glows or sparkle icons.",
+      "Don't frame agents as chatbots: no chat bubbles, personas or conversation threads. Agents are shown through cases, steps and decisions.",
+      "Don't use green, amber or red for anything but status, or an agent colour for status.",
+      "Don't put a shadow on a panel, tile or button.",
+      "Don't set amounts or body copy in mono.",
+      "Don't show a figure the run did not record; show its absence."
+    ]
+  }
+}

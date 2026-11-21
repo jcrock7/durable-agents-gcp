@@ -23,6 +23,11 @@ export TF_VAR_region="$REGION"
 export TF_VAR_state_bucket="$TF_STATE_BUCKET"
 export TF_VAR_cluster_name="${CLUSTER_NAME:-agents-demo}"
 export TF_VAR_app_hostname="${APP_HOSTNAME:-}"
+# Terraform wants every variable even to destroy. This one has no default (the Kubernetes API is
+# never open to the internet by default), so pass the same value up.sh used; a placeholder from the
+# documentation range stands in when it is unset, since a destroy never applies it.
+TF_VAR_authorized_networks="$(csv_to_json_list "${CLUSTER_AUTHORIZED_NETWORKS:-192.0.2.1/32}" | jq -c 'map({cidr: ., name: ("net-" + (. | gsub("[./]"; "-")))})')"
+export TF_VAR_authorized_networks
 
 approve=()
 backup=true

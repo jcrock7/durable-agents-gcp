@@ -3,6 +3,7 @@ import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
+import { classifyFailover, condenseHistory, lastWorker } from "./live.js";
 import { AGENTS, MCP_SERVERS, agentById, agentForWorkflow, type AgentEntry } from "./registry.js";
 import type { KubernetesSource, LiteLLMSource, RunInfo, TemporalSource } from "./sources.js";
 
@@ -290,6 +291,39 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     if (!run) return reply.code(404).send({ error: "no such case" });
     const [state, ended] = await Promise.all([stateOf(agent, run), endingOf(run)]);
     return { agentId: agent.id, summary: summarize(agent, run, state, ended), state: state ?? null, facts: factsOf(state) ?? null };
+  });
+
+  // Live Run view: polled every second while a case runs, so it skips the state cache.
+  const LiveQuery = z.object({ after: z.coerce.number().int().min(0).default(0), raw: z.coerce.number().int().min(1).optional() });
+  app.get<{ Params: { workflowId: string }; Querystring: Record<string, string> }>("/api/cases/:workflowId/live", async (req, reply) => {
+    const { workflowId } = req.params;
+    const agent = ID.test(workflowId) ? agentForWorkflow(workflowId) : undefined;
+    const q = LiveQuery.safeParse(req.query);
+    if (!agent?.built || !agent.stateQuery || !q.success || !temporal.describe || !temporal.history) return reply.code(400).send({ error: "invalid request" });
+    const run = await temporal.describe(workflowId);
+    if (!run) return reply.code(404).send({ error: "no such case" });
+    const raw = await temporal.history(workflowId);
+    if (q.data.raw !== undefined) {
+      const event = raw.find((e) => e.id === q.data.raw);
+      return event ?? reply.code(404).send({ error: "no such event" });
+    }
+    let state: unknown = null;
+    try {
+      state = (await temporal.query(workflowId, agent.stateQuery)) ?? null;
+    } catch {
+      state = null; // no worker to answer (failover, or an old run): the view draws from history alone
+    }
+    return {
+      status: run.status,
+      runId: run.runId,
+      startTime: run.startTime,
+      closeTime: run.closeTime,
+      workerIdentity: lastWorker(raw, run.pending),
+      state,
+      events: condenseHistory(raw, q.data.after),
+      pending: run.pending.map((p) => ({ ...p, kind: classifyFailover(p) })),
+      cursor: raw.at(-1)?.id ?? q.data.after,
+    };
   });
 
   const ReviewBody = z.union([

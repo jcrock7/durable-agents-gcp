@@ -114,7 +114,7 @@ resource "google_cloudfunctions2_function" "enforcer" {
 
   service_config {
     max_instance_count             = 1
-    available_memory               = "256M"
+    available_memory               = "512M" # @google-cloud/compute (load balancer sweep) needs ~300 MiB at startup
     timeout_seconds                = 300 # load balancer deletes are waited on one by one
     ingress_settings               = "ALLOW_INTERNAL_ONLY"
     all_traffic_on_latest_revision = true

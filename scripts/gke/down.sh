@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # Destroy the per-session cluster layer, then check for anything still billing.
 # The foundation layer (registry, secrets, backups) is kept.
+# With APP_HOSTNAME set, its Cloudflare DNS record is deleted first, so the name never points at
+# an IP this project no longer holds (scripts/lib/dns.sh).
 #
 # Usage: scripts/gke/down.sh [--yes] [--no-backup]
 #   --yes        skip Terraform's confirmation prompt
 #   --no-backup  skip the Postgres backup to GCS before teardown
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/terraform.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/dns.sh"
 
 refuse_root
-require_cmd gcloud terraform
+require_cmd gcloud terraform jq curl
 load_env
 tf_require_settings
 
@@ -53,6 +56,15 @@ EOF
   # and they would block deleting the network.
   log "deleting Kubernetes Gateways so GKE removes their load balancers"
   kubectl delete gateway --all --all-namespaces --ignore-not-found --wait=true --timeout=5m || true
+fi
+
+# Remove the DNS record before the IP it points at is released.
+if dns_managed; then
+  dns_delete "$APP_HOSTNAME" \
+    || die "could not delete the DNS record for ${APP_HOSTNAME}. The gateway IP is still reserved, so nothing is exposed; fix the Cloudflare settings and run this again."
+elif [[ -n "${APP_HOSTNAME:-}" ]]; then
+  warn "APP_HOSTNAME=${APP_HOSTNAME} but CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID are not set."
+  warn "Delete its DNS record by hand now: after this teardown the IP can be given to someone else."
 fi
 
 tf_init "$TF_DIR"

@@ -1,0 +1,15 @@
+# GKE only: the portal API checks Identity-Aware Proxy's signed token on every request
+# (apps/api/src/iap.ts), so it does not depend on the load balancer alone. The value is the
+# project number, replaced from cluster.env; the API refuses to start if it is not a number.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: IAP_PROJECT_NUMBER
+              value: PROJECT_NUMBER

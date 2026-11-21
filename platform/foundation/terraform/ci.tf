@@ -1,5 +1,6 @@
 # GitHub Actions → Google Cloud without stored keys (Workload Identity Federation).
-# Only workflows in var.github_repository can impersonate the github-ci account.
+# Only workflows in var.github_repository, running on var.github_branch, can impersonate the
+# github-ci account.
 # Skipped when github_repository is empty.
 #
 # Note: deleted identity pools are kept for 30 days, so after a destroy the same pool ID
@@ -30,7 +31,9 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.repository" = "assertion.repository"
     "attribute.ref"        = "assertion.ref"
   }
-  attribute_condition = "assertion.repository == \"${var.github_repository}\""
+  # Only workflows running on the default branch: a workflow on any other branch or on a pull
+  # request gets no Google credentials, so it cannot push images.
+  attribute_condition = "assertion.repository == \"${var.github_repository}\" && assertion.ref == \"refs/heads/${var.github_branch}\""
 
   oidc {
     issuer_uri = "https://token.actions.githubusercontent.com"

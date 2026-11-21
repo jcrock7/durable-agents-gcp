@@ -37,3 +37,13 @@ output "github_workload_identity_provider" {
 output "github_ci_service_account" {
   value = local.ci_enabled ? google_service_account.github_ci[0].email : null
 }
+
+output "node_service_account" {
+  description = "Service account the GKE nodes run as (logs, metrics and image pulls only)."
+  value       = google_service_account.gke_nodes.email
+}
+
+output "project_number" {
+  description = "Used by the portal API to check the audience of Identity-Aware Proxy tokens."
+  value       = data.google_project.this.number
+}

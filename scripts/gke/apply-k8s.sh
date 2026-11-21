@@ -46,6 +46,7 @@ backup_bucket="$(terraform -chdir="$FOUNDATION_DIR" output -raw pg_backup_bucket
 
 cat > "${OVERLAY}/cluster.env" <<EOF
 PROJECT_ID=${PROJECT_ID}
+PROJECT_NUMBER=$(terraform -chdir="$FOUNDATION_DIR" output -raw project_number)
 POSTGRES_GSA=$(jq -r '.postgres.email' <<<"$gsas")
 PG_BACKUP_DESTINATION=gs://${backup_bucket}/agents-pg
 PG_BACKUP_SERVER_NAME=${server_name}

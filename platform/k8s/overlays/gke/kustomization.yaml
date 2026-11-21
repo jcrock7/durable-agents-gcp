@@ -29,6 +29,7 @@ patches:
   - path: litellm-spot.yaml
   - path: worker-spot.yaml
   - path: postgres-gke.yaml
+  - path: api-iap.yaml
 
 configMapGenerator:
   # Holds the values below. local-config keeps it out of the rendered output.
@@ -102,6 +103,10 @@ replacements:
     targets:
       - select: { kind: GCPBackendPolicy, name: api }
         fieldPaths: [spec.default.iap.clientID]
+  - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.PROJECT_NUMBER }
+    targets:
+      - select: { kind: Deployment, name: api }
+        fieldPaths: ["spec.template.spec.containers.[name=api].env.[name=IAP_PROJECT_NUMBER].value"]
   - source: { kind: ConfigMap, name: cluster-settings, fieldPath: data.API_GSA }
     targets:
       - select: { kind: ServiceAccount, name: api }

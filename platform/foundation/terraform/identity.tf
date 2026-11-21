@@ -98,3 +98,30 @@ resource "google_secret_manager_secret_iam_member" "access" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.workload[each.value.workload].email}"
 }
+
+# --- GKE node identity --------------------------------------------------------
+# Nodes run as this account instead of the Compute Engine default one, which holds the Editor
+# role on the whole project. It can write logs and metrics and pull this project's images, and
+# nothing else. Workloads never use it: they act through Workload Identity (above).
+
+resource "google_service_account" "gke_nodes" {
+  project      = var.project_id
+  account_id   = "gke-nodes"
+  display_name = "GKE nodes (least privilege)"
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_project_iam_member" "gke_nodes" {
+  project = var.project_id
+  role    = "roles/container.defaultNodeServiceAccount"
+  member  = "serviceAccount:${google_service_account.gke_nodes.email}"
+}
+
+resource "google_artifact_registry_repository_iam_member" "gke_nodes_pull" {
+  project    = var.project_id
+  location   = google_artifact_registry_repository.images.location
+  repository = google_artifact_registry_repository.images.name
+  role       = "roles/artifactregistry.reader"
+  member     = "serviceAccount:${google_service_account.gke_nodes.email}"
+}

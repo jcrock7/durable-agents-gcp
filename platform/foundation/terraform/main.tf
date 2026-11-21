@@ -88,3 +88,24 @@ resource "google_project_iam_member" "iap_access" {
   role     = "roles/iap.httpsResourceAccessor"
   member   = each.value
 }
+
+data "google_project" "this" {
+  project_id = var.project_id
+}
+
+# Record who got through (and who was refused by) Identity-Aware Proxy. These Data Access logs
+# are off by default; IAP's volume here is a handful of entries per session.
+resource "google_project_iam_audit_config" "iap" {
+  project = var.project_id
+  service = "iap.googleapis.com"
+
+  audit_log_config {
+    log_type = "ADMIN_READ"
+  }
+  audit_log_config {
+    log_type = "DATA_READ"
+  }
+  audit_log_config {
+    log_type = "DATA_WRITE"
+  }
+}

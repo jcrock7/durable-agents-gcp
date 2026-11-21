@@ -175,7 +175,8 @@ export function reduceLive(g: LiveGraph, res: LiveResponse, now: number): LiveVi
       vendor: state?.facts?.vendorName,
       total: state?.invoice?.totalDue,
       kind: state?.match?.exceptionTypes?.[0]?.replace(/_/g, " "),
-      worker: res.workerIdentity?.split("@").pop(),
+      // The worker identity is <hostname>/<agent> (apps/worker/src/main.ts); the hostname is the pod name.
+      worker: res.workerIdentity?.split("/")[0]?.split("@").pop(),
     },
     pending: res.pending.map((p) => ({ ...p, node: nodeForActivity(g, p.activityType)?.id ?? "" })),
     startTime: res.startTime,

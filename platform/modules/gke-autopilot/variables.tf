@@ -52,3 +52,8 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "node_service_account" {
+  description = "Service account email the nodes run as. Use a least-privilege account, not the Compute Engine default (project Editor)."
+  type        = string
+}

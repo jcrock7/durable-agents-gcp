@@ -26,6 +26,10 @@ metadata:
 spec:
   default:
     timeoutSec: 300 # agent runs stream progress; allow long responses
+    # Log every request (sampleRate is per million), so there is a record of what reached the app.
+    logging:
+      enabled: true
+      sampleRate: 1000000
     iap:
       enabled: true
       clientID: IAP_OAUTH_CLIENT_ID # replaced from cluster.env

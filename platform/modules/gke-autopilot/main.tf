@@ -33,6 +33,15 @@ resource "google_container_cluster" "this" {
     }
   }
 
+  # Nodes run as a least-privilege account rather than the Compute Engine default (project Editor).
+  # On Autopilot the node identity is set through the auto-provisioning defaults.
+  cluster_autoscaling {
+    auto_provisioning_defaults {
+      service_account = var.node_service_account
+      oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
+    }
+  }
+
   release_channel {
     channel = var.release_channel
   }

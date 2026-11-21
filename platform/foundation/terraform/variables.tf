@@ -49,3 +49,9 @@ variable "github_repository" {
   type        = string
   default     = ""
 }
+
+variable "github_branch" {
+  description = "Branch whose GitHub Actions workflows may authenticate to Google Cloud."
+  type        = string
+  default     = "main"
+}

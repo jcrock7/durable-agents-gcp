@@ -21,12 +21,16 @@ variable "cluster_name" {
 }
 
 variable "authorized_networks" {
-  description = "CIDR blocks allowed to reach the Kubernetes API. Narrow this to your own IP when you can."
+  description = "CIDR blocks allowed to reach the Kubernetes API, e.g. your own IP as a /32. Required, and never the whole internet."
   type = list(object({
     cidr = string
     name = string
   }))
-  default = [{ cidr = "0.0.0.0/0", name = "anywhere" }]
+
+  validation {
+    condition     = length(var.authorized_networks) > 0 && alltrue([for n in var.authorized_networks : !endswith(n.cidr, "/0")])
+    error_message = "Name at least one network, and none may be a /0 (the whole internet)."
+  }
 }
 
 variable "app_hostname" {

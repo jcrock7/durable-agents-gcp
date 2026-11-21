@@ -10,10 +10,13 @@
 //   DEMO_CONTROLS      "true" adds /api/demo/* (sample case, kill worker); needs ERP_DEMO_URL
 //   ERP_DEMO_URL       postgres:// URL of the erp database as the erp_demo role
 //   TEMPORAL_UI_URL    Temporal Web UI base URL, linked from the Live Run drawer (optional)
+//   IAP_PROJECT_NUMBER Google Cloud project number. Set on GKE: every request must then carry a valid
+//                      Identity-Aware Proxy token for this project (all but /healthz). Unset: no check (local).
 //   PORT               default 8080
 import { fileURLToPath } from "node:url";
 import { buildApp } from "./app.js";
 import { pgErpDemoSource } from "./demo.js";
+import { iapVerifier } from "./iap.js";
 import { kubernetesSource, litellmSource, temporalSource } from "./sources.js";
 
 const demo = process.env.DEMO_CONTROLS === "true";
@@ -29,6 +32,8 @@ const app = buildApp({
   manualCostPerCaseUsd: Number(process.env.PORTAL_MANUAL_COST_PER_CASE_USD) > 0 ? Number(process.env.PORTAL_MANUAL_COST_PER_CASE_USD) : undefined,
   demo: demo ? { erp: pgErpDemoSource(process.env.ERP_DEMO_URL!) } : undefined,
   temporalUiUrl: process.env.TEMPORAL_UI_URL || undefined,
+  // Throws on a value that is not a number, so a broken deployment fails to start rather than run open.
+  iap: process.env.IAP_PROJECT_NUMBER ? iapVerifier({ projectNumber: process.env.IAP_PROJECT_NUMBER }) : undefined,
 });
 
 await app.listen({ host: "0.0.0.0", port: Number(process.env.PORT ?? 8080) });

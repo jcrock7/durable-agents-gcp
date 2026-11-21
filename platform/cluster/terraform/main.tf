@@ -27,16 +27,17 @@ module "network" {
 }
 
 module "gke" {
-  source              = "../../modules/gke-autopilot"
-  project_id          = var.project_id
-  region              = var.region
-  name                = var.cluster_name
-  network             = module.network.network_id
-  subnetwork          = module.network.subnet_id
-  pods_range_name     = module.network.pods_range_name
-  services_range_name = module.network.services_range_name
-  authorized_networks = var.authorized_networks
-  labels              = local.labels
+  source               = "../../modules/gke-autopilot"
+  project_id           = var.project_id
+  region               = var.region
+  name                 = var.cluster_name
+  network              = module.network.network_id
+  subnetwork           = module.network.subnet_id
+  pods_range_name      = module.network.pods_range_name
+  services_range_name  = module.network.services_range_name
+  authorized_networks  = var.authorized_networks
+  node_service_account = local.foundation.node_service_account
+  labels               = local.labels
 }
 
 # Let each Kubernetes service account act as its Google service account (Workload Identity).

@@ -23,4 +23,9 @@ gcloud auth configure-docker "$HOST" --quiet >/dev/null 2>&1
 build_image "$APP" "$REF"
 log "pushing ${REF}"
 docker push -q "$REF" >/dev/null
-record_image gke "$APP" "$REF"
+
+# Deploy by digest, not by tag: a tag can be pointed at different content later, a digest cannot.
+# The tag stays in the reference for readability; Kubernetes pulls by the digest.
+digest="$(gcloud artifacts docker images describe "$REF" --project "$PROJECT_ID" --format='value(image_summary.digest)')"
+[[ "$digest" == sha256:* ]] || die "could not read the digest of ${REF}"
+record_image gke "$APP" "${REF}@${digest}"

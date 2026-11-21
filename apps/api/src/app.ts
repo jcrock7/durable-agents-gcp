@@ -4,6 +4,7 @@ import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import { registerDemo, type ErpDemoSource } from "./demo.js";
+import { IAP_JWT_HEADER, isCrossSite, type IapVerifier } from "./iap.js";
 import { classifyFailover, condenseHistory, lastWorker } from "./live.js";
 import { AGENTS, MCP_SERVERS, agentById, agentForWorkflow, type AgentEntry } from "./registry.js";
 import type { KubernetesSource, LiteLLMSource, RunInfo, TemporalSource } from "./sources.js";
@@ -24,6 +25,11 @@ export interface AppDeps {
   demo?: { erp: ErpDemoSource };
   /** Temporal Web UI base URL, for the Live Run drawer's link. */
   temporalUiUrl?: string;
+  /**
+   * Checks Identity-Aware Proxy's signed token on every request (all but /healthz). Set on GKE;
+   * unset for local development, where there is no IAP and the identity is `localUser`.
+   */
+  iap?: IapVerifier;
 }
 
 /** One row in a case list, the same shape for every agent. */
@@ -144,6 +150,30 @@ export function summarize(agent: AgentEntry, run: RunInfo, state: AnyState | und
 export function buildApp(deps: AppDeps): FastifyInstance {
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
   const { temporal, litellm, kubernetes } = deps;
+
+  // Behind IAP, trust nothing but its signed token. The identity header is rewritten from the
+  // verified token, so the rest of the app never reads a value a client could have sent itself.
+  // /healthz stays open: load balancer health checks reach the pod directly, without IAP.
+  const IDENTITY_HEADER = "x-goog-authenticated-user-email";
+  app.addHook("onRequest", async (req, reply) => {
+    if (!deps.iap || req.url === "/healthz") return;
+    const token = req.headers[IAP_JWT_HEADER];
+    try {
+      if (typeof token !== "string" || !token) throw new Error("no token");
+      const { email } = await deps.iap.verify(token);
+      req.headers[IDENTITY_HEADER] = `accounts.google.com:${email}`;
+    } catch (error) {
+      req.log.warn({ reason: error instanceof Error ? error.message : String(error) }, "request without a valid IAP token refused");
+      return reply.code(401).send({ error: "sign-in required" });
+    }
+  });
+
+  // Requests that change something must come from the portal itself, not from another website
+  // riding on the visitor's sign-in.
+  app.addHook("onRequest", async (req, reply) => {
+    if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return;
+    if (isCrossSite(req.headers)) return reply.code(403).send({ error: "cross-site request refused" });
+  });
 
   // Query results: closed runs never change, so cache them by run; running ones for a few seconds.
   const cache = new Map<string, { at: number; value: AnyState | undefined; closed: boolean }>();

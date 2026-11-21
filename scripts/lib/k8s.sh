@@ -184,11 +184,11 @@ wait_for_services() {
 }
 
 # Postgres logins for the synthetic ERP's MCP servers (platform/mcp): erp_reader for erp-read,
-# erp_writer for erp-write. The data is synthetic, so on k3d and GKE alike the passwords are
+# erp_writer for erp-write, erp_demo for the portal's demo controls. The data is synthetic, so on k3d and GKE alike the passwords are
 # random, generated once and kept in the cluster. Values never printed.
 ensure_erp_secrets() {
   local pair name user
-  for pair in pg-erp-reader:erp_reader pg-erp-writer:erp_writer; do
+  for pair in pg-erp-reader:erp_reader pg-erp-writer:erp_writer pg-erp-demo:erp_demo; do
     name="${pair%%:*}"
     user="${pair##*:}"
     kubectl -n "$NS" get secret "$name" >/dev/null 2>&1 && continue

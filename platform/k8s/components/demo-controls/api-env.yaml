@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            - name: DEMO_CONTROLS
+              value: "true"
+            - name: ERP_DEMO_USER
+              valueFrom:
+                secretKeyRef: { name: pg-erp-demo, key: username }
+            - name: ERP_DEMO_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: pg-erp-demo, key: password }
+            # Kubernetes expands $(VAR) from the variables above (the password is alphanumeric).
+            - name: ERP_DEMO_URL
+              value: postgres://$(ERP_DEMO_USER):$(ERP_DEMO_PASSWORD)@agents-pg-rw:5432/erp

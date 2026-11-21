@@ -122,6 +122,12 @@ describe("synthetic ERP generator", () => {
     expect(sql).toContain("GRANT SELECT ON ALL TABLES IN SCHEMA erp TO erp_reader");
     expect(sql).not.toMatch(/expectedAction|accept_uom_conversion|hidden_instructions/);
   });
+
+  it("seed grants erp_demo insert on invoices, invoice_lines, exceptions", () => {
+    const sql = seedSql(data);
+    expect(sql).toContain("GRANT SELECT ON ALL TABLES IN SCHEMA erp TO erp_demo");
+    expect(sql).toContain("GRANT INSERT ON erp.invoices, erp.invoice_lines, erp.exceptions TO erp_demo");
+  });
 });
 
 describe("PDF text round trip", () => {

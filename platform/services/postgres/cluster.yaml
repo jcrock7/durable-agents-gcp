@@ -53,3 +53,10 @@ spec:
         login: true
         passwordSecret:
           name: pg-erp-writer # kubernetes.io/basic-auth, username "erp_writer"
+      # Demo controls only (platform/k8s/components/demo-controls): the portal API clones sample
+      # exceptions as this role. Nothing connects as it unless DEMO_CONTROLS is on.
+      - name: erp_demo
+        ensure: present
+        login: true
+        passwordSecret:
+          name: pg-erp-demo # kubernetes.io/basic-auth, username "erp_demo"

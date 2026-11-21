@@ -1,7 +1,8 @@
 import { liveHash } from "./routes.js";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { cents, caseTag, plain, postJson, shortDate, sourceLabel, titleCase, usd, usePoll, type Agent, type AnyState, type CaseDetail, type Skill } from "./api.js";
-import { approveEffect, escalateEffect, sendBackEffect } from "./effects.js";
+import { approveEffect, decisionOutcome, escalateEffect, sendBackEffect } from "./effects.js";
+import { Close } from "./icons.js";
 import { Inspector } from "./Inspector.js";
 import { clock, StepStrip, stepTime, type Step } from "./StepStrip.js";
 
@@ -20,6 +21,8 @@ export function CaseView({ detail, agent, me, onBack, onChanged }: { detail: Cas
   return detail.agentId === "research-summarize" ? <ResearchCase detail={detail} agent={agent} me={me} onBack={onBack} onChanged={onChanged} /> : <InvoiceCase detail={detail} agent={agent} me={me} onBack={onBack} onChanged={onChanged} />;
 }
 
+type Mode = "choose" | "approve" | "back" | "escalate";
+
 function ReviewBar(props: {
   workflowId: string;
   me: string;
@@ -30,24 +33,34 @@ function ReviewBar(props: {
   ifEscalate?: string;
   /** When a rule found a conflict: suggested feedback, and sending back becomes the primary action. */
   conflictHint?: string;
+  /** What approving will write, shown in the approval dialog. */
+  approveFacts?: Array<[string, string]>;
+  /** Whether the workflow keeps a note with an approval. A conflict makes the reason required. */
+  approveNote?: boolean;
   onChanged: () => void;
 }) {
-  const [mode, setMode] = useState<"back" | "escalate" | null>(null);
+  const [mode, setMode] = useState<Mode | null>(null);
   const [feedback, setFeedback] = useState(props.conflictHint ?? "");
   const [note, setNote] = useState("");
+  const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const dialog = useRef<HTMLDialogElement>(null);
+  const conflict = Boolean(props.conflictHint);
   // The native dialog gives the focus trap, Escape to close and the backdrop.
   useEffect(() => {
     const d = dialog.current;
-    if (mode && d && !d.open) {
-      d.showModal();
-      const t = d.querySelector("textarea");
-      t?.focus();
-      t?.setSelectionRange(t.value.length, t.value.length);
+    if (!d) return;
+    if (!mode) {
+      if (d.open) d.close();
+      return;
     }
-    if (!mode && d?.open) d.close();
+    if (!d.open) d.showModal();
+    const t = d.querySelector("textarea");
+    if (t) {
+      t.focus();
+      t.setSelectionRange(t.value.length, t.value.length);
+    } else d.querySelector<HTMLElement>("[data-first]")?.focus();
   }, [mode]);
   const send = async (body: Record<string, unknown>) => {
     setBusy(true);
@@ -56,6 +69,7 @@ function ReviewBar(props: {
       await postJson(`/api/cases/${props.workflowId}/review`, body);
       setFeedback("");
       setNote("");
+      setReason("");
       setMode(null);
       props.onChanged();
     } catch (e) {
@@ -64,37 +78,59 @@ function ReviewBar(props: {
       setBusy(false);
     }
   };
-  const back = mode === "back";
-  const text = back ? feedback : note;
-  const setText = back ? setFeedback : setNote;
+  const form =
+    mode === "approve"
+      ? { title: props.approveLabel, effect: props.ifApprove, label: conflict ? "Reason for Approving Against the Policy" : "Note for the Record (Optional)", text: reason, set: setReason, required: conflict, confirm: props.approveLabel, placeholder: conflict ? "Why this should be approved although the policy points elsewhere" : "Anything the record should say about this approval" }
+      : mode === "back"
+        ? { title: "Send Back to Agent", effect: props.ifSendBack, label: "Feedback for the Agent", text: feedback, set: setFeedback, required: true, confirm: "Send Back to Agent", placeholder: "Tell the agent what to do instead, e.g. ask the vendor for a credit memo" }
+        : mode === "escalate"
+          ? { title: "Escalate to AP Specialist", effect: props.ifEscalate ?? "", label: "Note for the AP Specialist", text: note, set: setNote, required: true, confirm: "Confirm Escalation", placeholder: "What the specialist should check, e.g. the buyer should confirm this price with the vendor" }
+          : null;
+  const showText = form && (mode !== "approve" || props.approveNote);
+  const ready = form ? !showText || !form.required || Boolean(form.text.trim()) : false;
   const submit = () => {
-    if (!text.trim() || busy) return;
-    void send(back ? { approved: false, feedback } : { escalate: { note } });
+    if (!form || !ready || busy) return;
+    const text = showText ? form.text.trim() : "";
+    void send(mode === "approve" ? { approved: true, ...(text ? { feedback: text } : {}) } : mode === "back" ? { approved: false, feedback: text } : { escalate: { note: text } });
   };
-  const approve = (
-    <button type="button" className={`btn${props.conflictHint ? "" : " primary"}`} disabled={busy} onClick={() => void send({ approved: true })}>
-      {props.approveLabel}
+  const action = (m: Mode, label: string, primary: boolean, first?: boolean) => (
+    <button key={m} type="button" className={`btn${primary ? " primary" : ""}`} disabled={busy} aria-haspopup="dialog" data-first={first ? "" : undefined} onClick={() => setMode(m)}>
+      {label}…
     </button>
   );
-  const sendBack = (
-    <button type="button" className={`btn${props.conflictHint ? " primary" : ""}`} disabled={busy} aria-haspopup="dialog" onClick={() => setMode("back")}>
-      Send Back to Agent…
-    </button>
+  const actions = (first?: boolean) => {
+    const approve = action("approve", props.approveLabel, !conflict, first && !conflict);
+    const back = action("back", "Send Back to Agent", conflict, first && conflict);
+    return (
+      <>
+        {conflict ? back : approve}
+        {conflict ? approve : back}
+        {props.ifEscalate && action("escalate", "Escalate to AP Specialist", false)}
+      </>
+    );
+  };
+  const lead = conflict ? (
+    <>
+      <b>Recommended: send back.</b> {props.conflictHint} <b>If you approve anyway:</b> {props.ifApprove}
+    </>
+  ) : (
+    <>
+      <b>If you approve:</b> {props.ifApprove}
+    </>
   );
   return (
-    <div className="dbar">
-      <div className="what">
-        <b>If you approve:</b> {props.ifApprove}
-      </div>
-      {props.conflictHint ? sendBack : approve}
-      {props.conflictHint ? approve : sendBack}
-      {props.ifEscalate && (
-        <button type="button" className="btn" disabled={busy} aria-haspopup="dialog" onClick={() => setMode("escalate")}>
-          Escalate to AP Specialist…
-        </button>
-      )}
+    <section className="dbar" aria-label="Your decision">
+      <div className="what">{lead}</div>
+      <div className="dbar-actions">{actions()}</div>
+      <button type="button" className="btn primary dbar-decide" disabled={busy} aria-haspopup="dialog" onClick={() => setMode("choose")}>
+        Decide…
+      </button>
       <span className="who">Recorded as {props.me}</span>
-      {error && !mode && <span style={{ flexBasis: "100%", color: "var(--warn)" }}>{error}</span>}
+      {error && !mode && (
+        <span className="form-error" role="alert">
+          The decision was not recorded: {error}
+        </span>
+      )}
 
       <dialog
         ref={dialog}
@@ -105,7 +141,22 @@ function ReviewBar(props: {
           if (e.target === dialog.current && !busy) setMode(null);
         }}
       >
-        {mode && (
+        {mode === "choose" && (
+          <div className="modal-body">
+            <header>
+              <h2 id="decide-h">Your Decision</h2>
+              <button type="button" className="icon-btn" aria-label="Close" onClick={() => setMode(null)}>
+                <Close />
+              </button>
+            </header>
+            <p className="modal-effect">{lead}</p>
+            <div className="modal-choices">{actions(true)}</div>
+            <footer>
+              <span className="who">Recorded as {props.me}</span>
+            </footer>
+          </div>
+        )}
+        {form && (
           <form
             className="modal-body"
             onSubmit={(e) => {
@@ -114,76 +165,71 @@ function ReviewBar(props: {
             }}
           >
             <header>
-              <h2 id="decide-h">{back ? "Send Back to Agent" : "Escalate to AP Specialist"}</h2>
+              <h2 id="decide-h">{form.title}</h2>
               <button type="button" className="icon-btn" aria-label="Close" disabled={busy} onClick={() => setMode(null)}>
-                ✕
+                <Close />
               </button>
             </header>
+            {mode === "approve" && conflict && (
+              <div className="gap crit">
+                <b>This conflicts with the policy.</b> {props.conflictHint}
+              </div>
+            )}
             <p className="modal-effect">
-              <b>What happens:</b> {back ? props.ifSendBack : props.ifEscalate}
+              <b>What happens:</b> {form.effect}
             </p>
-            <label htmlFor="decide-text" className="lab">
-              {back ? "Feedback for the Agent" : "Note for the AP Specialist"}
-            </label>
-            <textarea
-              id="decide-text"
-              rows={7}
-              value={text}
-              placeholder={back ? "Tell the agent what to do instead, e.g. ask the vendor for a credit memo" : "What the specialist should check, e.g. the buyer should confirm this price with the vendor"}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit();
-              }}
-            />
-            {back && props.conflictHint && feedback === props.conflictHint && <span className="muted">Suggested from the policy conflict. Edit it as you need.</span>}
-            {error && <span className="modal-error" role="alert">{error}</span>}
+            {mode === "approve" && props.approveFacts && props.approveFacts.length > 0 && (
+              <dl className="kv modal-facts">
+                {props.approveFacts.map(([k, v]) => (
+                  <Fragment key={k}>
+                    <dt>{k}</dt>
+                    <dd>{v}</dd>
+                  </Fragment>
+                ))}
+              </dl>
+            )}
+            {showText && (
+              <>
+                <label htmlFor="decide-text" className="lab">
+                  {form.label}
+                </label>
+                <textarea
+                  id="decide-text"
+                  rows={mode === "approve" ? 3 : 7}
+                  className={mode === "approve" ? "short" : undefined}
+                  value={form.text}
+                  required={form.required}
+                  placeholder={form.placeholder}
+                  onChange={(e) => form.set(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit();
+                  }}
+                />
+              </>
+            )}
+            {mode === "back" && conflict && feedback === props.conflictHint && <span className="muted">Suggested from the policy conflict. Edit it as you need.</span>}
+            {error && (
+              <span className="form-error" role="alert">
+                The decision was not recorded: {error}. Your text is kept; try again.
+              </span>
+            )}
             <footer>
-              <span className="who">Recorded as {props.me} · Ctrl+Enter to confirm</span>
-              <button type="button" className="btn" disabled={busy} onClick={() => setMode(null)}>
+              <span className="who">
+                Recorded as {props.me}
+                {showText ? " · Ctrl+Enter to confirm" : ""}
+              </span>
+              <button type="button" className="btn" disabled={busy} data-first={showText ? undefined : ""} onClick={() => setMode(null)}>
                 Cancel
               </button>
-              <button type="submit" className="btn primary" disabled={busy || !text.trim()}>
-                {busy ? "Sending…" : back ? "Send Back to Agent" : "Confirm Escalation"}
+              <button type="submit" className="btn primary" disabled={busy || !ready}>
+                {busy ? "Sending…" : form.confirm}
               </button>
             </footer>
           </form>
         )}
       </dialog>
-    </div>
+    </section>
   );
-}
-
-/** Pull one field out of a tool result that is JSON, even when the excerpt was cut short. */
-function field(raw: string, key: string): string | undefined {
-  const m = new RegExp(`"${key}"\\s*:\\s*(?:"((?:[^"\\\\]|\\\\.)*)"?|(-?[\\d.]+))`).exec(raw);
-  return m ? (m[1] ?? m[2])?.replace(/\\n/g, " ").replace(/\\"/g, '"') : undefined;
-}
-
-/** A sentence a controller can check, in place of the raw tool output. Invoice facts come from the case, not the document text. */
-function describe(e: AnyState, s: AnyState, dueDate?: string): { title: string; body: string } {
-  const raw = String(e.excerpt ?? "");
-  const src = sourceLabel(e.source);
-  if (/^\(no rows\)$/i.test(raw.trim())) return { title: src, body: "The search returned nothing." };
-  if (String(e.source).startsWith("docs:")) {
-    const inv = s.invoice;
-    if (!inv) return { title: src, body: "The vendor's document, read as text." };
-    const parts = [inv.invoiceDate && `Dated ${shortDate(inv.invoiceDate)}`, inv.poReference, dueDate && `due ${shortDate(dueDate)}`, inv.totalDue && `total ${inv.totalDue}`].filter(Boolean);
-    return { title: `Invoice ${inv.vendorInvoiceNumber}`, body: `${parts.join(", ")}.` };
-  }
-  if (raw.trim().startsWith("{") || raw.trim().startsWith("[")) {
-    const price = field(raw, "price_cents");
-    if (price) {
-      const to = field(raw, "effective_to");
-      return { title: "Contract Price", body: `${field(raw, "item_id") ?? "Item"} at ${cents(Number(price))}, effective ${shortDate(field(raw, "effective_from"))}${to ? ` to ${shortDate(to)}` : ", no end date"}.` };
-    }
-    const subject = field(raw, "subject");
-    if (subject) {
-      const body = field(raw, "body");
-      return { title: `Vendor Message, ${shortDate(field(raw, "sent_at"))}`, body: `“${subject}” from ${field(raw, "from_address") ?? "unknown sender"}.${body ? ` ${body.slice(0, 180)}${body.length > 180 ? "…" : ""}` : ""}` };
-    }
-    return { title: src, body: raw.slice(0, 200) };
-  }
-  return { title: String(e.source).startsWith("match-engine") ? "Three-Way Match" : src, body: plain(raw.replace(/^[A-Z_]+:\s*/, "")) };
 }
 
 /** Rationale text with [E1, E2] references turned into citation tags. */
@@ -238,9 +284,12 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
   const amount: number | undefined = s.adjustment?.amountCents;
   const subject = `${vendor ? `${vendor} ` : ""}invoice ${invNo ?? summary.ref}`;
   const actionLabel = titleCase(proposal?.action);
+  const routeFit: { fits: boolean; expected?: string; why?: string } | undefined = s.route?.policyFit;
   const headline = !summary.needsPerson
     ? `${titleCase(exception)} on ${subject}`
-    : proposal?.action === "accept_variance" && amount != null
+    : routeFit && !routeFit.fits
+      ? `The agent proposes ${actionLabel} for the ${amount != null ? `${cents(amount)} ` : ""}${exception} on ${subject}. ${routeFit.expected ? `The policy points to ${titleCase(routeFit.expected)}.` : "That does not fit the policy."}`
+      : proposal?.action === "accept_variance" && amount != null
       ? `Approve a ${cents(amount)} ${exception} on ${subject}?`
       : `Approve “${actionLabel}” for the ${exception} on ${subject}?`;
 
@@ -338,6 +387,27 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
     };
   });
 
+  const at = (name: RegExp) => timeline.find((t) => name.test(String(t.name)));
+  const approvedStep = at(/^approved$/i);
+  const postedStep = at(/^post resolution$/i);
+  const escalatedStep = at(/^escalated by reviewer$/i);
+  const outcome = decisionOutcome({
+    actionLabel,
+    ref: summary.ref,
+    path: route?.path,
+    amountCents: amount,
+    payableCents: s.adjustment?.payableCents,
+    status: s.status,
+    reviewer: s.reviewer,
+    approvedAt: approvedStep?.at,
+    approvalReason: /reason: (.+)$/.exec(String(approvedStep?.detail ?? ""))?.[1],
+    postedAt: postedStep?.at,
+    escalationNote: escalatedStep ? String(escalatedStep.detail ?? "") : undefined,
+  });
+  const writes = calls.filter((c) => String(c.ref).startsWith("erp-write:") && c.outcome === "ok").length;
+  // A decided case opens on the step that carried the decision out, not on "Finished".
+  const decidedStep = summary.needsPerson ? -1 : timeline.findIndex((t) => t === (postedStep ?? escalatedStep ?? approvedStep));
+
   const approveLabel = route?.path === "post" ? "Approve and Post to ERP" : route?.path === "hold" ? "Approve and Hold Invoice" : "Approve";
   const ifApprove = approveEffect({ actionLabel, ref: summary.ref, path: route?.path, amountCents: amount, payableCents: s.adjustment?.payableCents, messageTo: route?.message?.recipient });
   const waitingSince = Date.parse(timeline.find((t) => t.state === "now")?.at ?? summary.startedAt);
@@ -349,7 +419,7 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
       <main className="page" aria-labelledby="case-h">
         <div className="dh">
           <div className="row" style={{ alignItems: "center" }}>
-            <span className={`tag ${tagClass}${summary.needsPerson ? " solid" : ""}`}>{summary.needsPerson ? `Needs Your Decision · Waiting ${waited}` : tagText}</span>
+            <span className={`tag ${summary.needsPerson && conflict ? "crit" : tagClass}${summary.needsPerson ? " solid" : ""}`}>{summary.needsPerson ? `Needs Your Decision${conflict ? " · Conflicts with Policy" : ""} · Waiting ${waited}` : tagText}</span>
             <BackLink agent={agent} onBack={onBack} />
           </div>
           <h1 id="case-h">{headline}</h1>
@@ -365,9 +435,31 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
           </dl>
         </div>
 
+        {outcome && (
+          <section className={`outcome ${outcome.tone}`} aria-label="Decision">
+            <span className={`tag ${outcome.tone}`}>{outcome.title}</span>
+            <p>{outcome.body}</p>
+            {writes > 0 && (
+              <button
+                type="button"
+                className="link-btn"
+                onClick={() => {
+                  const el = document.getElementById("audit");
+                  if (el instanceof HTMLDetailsElement) el.open = true;
+                  el?.scrollIntoView({ block: "start" });
+                }}
+              >
+                See the {writes === 1 ? "ERP Write" : `${writes} ERP Writes`} in the Audit Trail
+              </button>
+            )}
+          </section>
+        )}
+
         <StepStrip
+          key={decidedStep}
+          initial={decidedStep >= 0 ? decidedStep : undefined}
           steps={steps}
-          action={{ label: summary.temporalStatus === "RUNNING" ? "◉ Watch live" : "▶ Replay run", href: liveHash(agent.id, summary.workflowId) }}
+          action={{ label: summary.temporalStatus === "RUNNING" ? (summary.needsPerson || s.stage === "waiting" ? "Open Run View" : "Watch Live") : "Replay Run", href: liveHash(agent.id, summary.workflowId) }}
         />
 
         <div className="g2">
@@ -493,7 +585,9 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                 </div>
                 <div className="ev">
                   {evidence.map((e) => {
-                    const { title, body } = describe(e, s, facts?.dueDate);
+                    const sum = detail.evidence?.[e.ref];
+                    const title = sum?.title ?? sourceLabel(e.source);
+                    const body = sum?.body ?? "No summary was recorded for this item. Open the raw output below.";
                     const rel = e.relevance ? RELEVANCE[e.relevance] : undefined;
                     return (
                       <div key={e.ref}>
@@ -543,7 +637,7 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                   </li>
                 ))}
                 {reasons.map((r) => (
-                  <li key={r}>
+                  <li key={r} className={/does not fit the policy/.test(r) ? "crit" : undefined}>
                     <div>
                       {plain(r)}.
                       {over && /approval line/.test(r) && (
@@ -559,7 +653,7 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                     </div>
                   </li>
                 ))}
-                {conflict && !reasons.some((r) => /does not fit the policy/.test(r)) && <li>{plain(`${proposal?.action} does not fit the policy: ${conflict.why}`)}.</li>}
+                {conflict && !reasons.some((r) => /does not fit the policy/.test(r)) && <li className="crit">{plain(`${proposal?.action} does not fit the policy: ${conflict.why}`)}.</li>}
                 {s.invoice && !s.invoice.containsInstructions && <li className="pass">Invoice text was screened for hidden instructions. Passed.</li>}
                 {s.invoice?.containsInstructions && <li>Instructions were found in the invoice: {s.invoice.instructionsSummary || "unspecified"}.</li>}
                 {proposal?.fraudFlag && <li>Possible fraud: {proposal.fraudReason || "flagged by the agent"}.</li>}
@@ -623,7 +717,7 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
           </div>
         </div>
 
-        <details className="panel audit">
+        <details className="panel audit" id="audit">
           <summary>
             Audit Trail · {calls.length} Tool Calls, Skills, Cost and Guardrails
           </summary>
@@ -640,7 +734,14 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
           ifApprove={ifApprove}
           ifSendBack={sendBackEffect(agent.name, Number(s.round ?? 1))}
           ifEscalate={escalateEffect(summary.ref)}
-          conflictHint={conflict?.expected ? `The policy points to ${titleCase(conflict.expected)}: ${conflict.why}.` : undefined}
+          conflictHint={conflict ? plain(`${conflict.expected ? `The policy points to ${titleCase(conflict.expected)}: ` : ""}${conflict.why ?? "the proposed action does not fit the policy"}.`) : undefined}
+          approveNote
+          approveFacts={[
+            ["Action", actionLabel],
+            ...(amount ? ([["Amount", cents(Math.abs(amount))]] as Array<[string, string]>) : []),
+            ...(route?.path === "post" && s.adjustment?.payableCents != null ? ([["Invoice Payable After", cents(s.adjustment.payableCents)]] as Array<[string, string]>) : []),
+            ["Invoice", `${summary.ref}${invNo ? ` (vendor’s number ${invNo})` : ""}`],
+          ]}
           onChanged={onChanged}
         />
       )}

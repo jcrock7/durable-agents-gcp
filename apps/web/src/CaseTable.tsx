@@ -114,9 +114,9 @@ export function CaseTable(props: { agentId?: string; agents?: Agent[]; initial?:
                       <td data-label="Type">{kind}</td>
                       <td data-label="Status">
                         <span className={`tag ${cls}`}>{label}</span>
-                        {c.temporalStatus === "RUNNING" && c.agentId === "invoice-exception-resolver" && (
+                        {c.temporalStatus === "RUNNING" && c.agentId === "invoice-exception-resolver" && !c.needsPerson && c.stage !== "waiting" && (
                           <a className="live-mark" href={liveHash(c.agentId, c.workflowId)} onClick={(e) => e.stopPropagation()} title="Watch this case run live">
-                            ● Live
+                            Live
                           </a>
                         )}
                       </td>

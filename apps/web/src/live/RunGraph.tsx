@@ -12,12 +12,12 @@ function Node({ n, v, selected, onSelect, onBadge }: { n: GraphNode; v: NodeView
         <span className="live-badges">
           {v.retries > 0 && (
             <button type="button" className="live-badge retry" onClick={onBadge} title="Show these retries in the engine history">
-              ↻ {v.retries} retr{v.retries === 1 ? "y" : "ies"}
+              {v.retries} {v.retries === 1 ? "Retry" : "Retries"}
             </button>
           )}
           {v.failovers > 0 && (
             <button type="button" className="live-badge failover" onClick={onBadge} title="Show the failover in the engine history">
-              ⚡ failover
+              Failover
             </button>
           )}
         </span>
@@ -26,8 +26,7 @@ function Node({ n, v, selected, onSelect, onBadge }: { n: GraphNode; v: NodeView
         <span className="nt">
           {v.status === "done" && "✓ "}
           {v.status === "now" && <span className="live-pulse" aria-hidden="true" />}
-          {n.gate && v.status !== "done" && "⏸ "}
-          {n.label}
+                    {n.label}
         </span>
         <span className="nm">{meta || " "}</span>
       </button>
@@ -43,7 +42,7 @@ export function RunGraph({ graph, view, filter, onFilter, onBadge }: { graph: Li
     <section className="panel live-panel" aria-label="Workflow">
       <div className="live-h">
         <span>Workflow</span>
-        <span>{view.header.worker ? `worker ${view.header.worker}` : ""}</span>
+        <span>{view.header.worker ? `Worker ${view.header.worker}` : ""}</span>
       </div>
       <div className="live-graph">
         {graph.nodes.map((n, i) => (
@@ -57,7 +56,7 @@ export function RunGraph({ graph, view, filter, onFilter, onBadge }: { graph: Li
         <div className={`live-branch ${bv.status === "pending" || bv.status === "skipped" ? "untaken" : ""}`}>
           <span className="muted">↳ {branch.label}:</span>
           <Node n={branch.node} v={bv} selected={filter === branch.node.id} onSelect={() => onFilter(filter === branch.node.id ? undefined : branch.node.id)} onBadge={() => onBadge(branch.node.id)} />
-          {bv.status === "skipped" && <span className="muted">not taken</span>}
+          {bv.status === "skipped" && <span className="muted">Not taken</span>}
         </div>
       )}
     </section>

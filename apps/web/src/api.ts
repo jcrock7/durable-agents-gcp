@@ -136,6 +136,8 @@ export interface CaseDetail {
   summary: CaseSummary;
   state: AnyState | null;
   facts?: CaseFacts | null;
+  /** What each evidence item says, by reference. Written by the API from the recorded tool result. */
+  evidence?: Record<string, { title?: string; body: string }>;
 }
 
 export interface Mission {

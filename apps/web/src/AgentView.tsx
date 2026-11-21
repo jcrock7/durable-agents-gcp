@@ -86,7 +86,7 @@ export function AgentView({
           </div>
           <div>
             <dt>Eval Pass Rate</dt>
-            <dd>{agent.evals?.rate ?? "–"}</dd>
+            <dd>{agent.evals?.rate ?? (agent.built ? "Not run" : "–")}</dd>
           </div>
           <div style={{ minWidth: 170 }}>
             <dt>Budget, 30 Days</dt>
@@ -101,7 +101,7 @@ export function AgentView({
       {!agent.built && (
         <>
           <div className="notice">
-            <span className="tag info">Roadmap</span>
+            <span className="tag idle">Roadmap</span>
             <span>This agent is designed but not built yet. Its cases will appear here once it runs.</span>
           </div>
           <div className="ov-cols">

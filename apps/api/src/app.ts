@@ -1,3 +1,4 @@
+import { evidenceSummaries } from "./evidence.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
@@ -331,7 +332,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const [run] = await temporal.listRuns(`WorkflowId = '${workflowId}'`, 1);
     if (!run) return reply.code(404).send({ error: "no such case" });
     const [state, ended] = await Promise.all([stateOf(agent, run), endingOf(run)]);
-    return { agentId: agent.id, summary: summarize(agent, run, state, ended), state: state ?? null, facts: factsOf(state) ?? null };
+    const facts = factsOf(state);
+    return { agentId: agent.id, summary: summarize(agent, run, state, ended), state: state ?? null, facts: facts ?? null, evidence: evidenceSummaries(state, facts?.dueDate) };
   });
 
   // Live Run view: polled every second while a case runs, so it skips the state cache.

@@ -90,8 +90,8 @@ export function Overview(props: { mission?: Mission; agents: Agent[]; health?: b
           </h2>
           <div className="kpis">
             <Kpi label="Awaiting Decision" value={cents(m.value.awaitingDecisionCents)} sub="Value of the adjustments waiting on a person" />
-            <Kpi label="Invoice Value Processed" value={cents(m.value.invoiceValueProcessedCents)} sub={`Across ${m.value.closed} closed cases`} />
-            <Kpi label="Closed Without a Person" value={m.value.closed ? `${Math.round((100 * m.value.closedWithoutPerson) / m.value.closed)}%` : "–"} sub={`${m.value.closedWithoutPerson} of ${m.value.closed} closed cases`} />
+            <Kpi label="Invoice Value Processed" value={cents(m.value.invoiceValueProcessedCents)} sub={`Across ${m.value.closed} closed ${m.value.closed === 1 ? "case" : "cases"}`} />
+            <Kpi label="Closed Without a Person" value={m.value.closed ? `${Math.round((100 * m.value.closedWithoutPerson) / m.value.closed)}%` : "–"} sub={`${m.value.closedWithoutPerson} of ${m.value.closed} closed ${m.value.closed === 1 ? "case" : "cases"}`} />
             <Kpi label="Median Time to Proposal" value={m.value.medianSecondsToProposal == null ? "–" : `${Math.round(m.value.medianSecondsToProposal)}s`} sub="From the match to a proposed resolution" />
             <Kpi label="Cost per Case" value={usd(m.value.costPerCaseUsd, 4)} sub="Model spend per case worked" />
             {m.value.manualCostPerCaseUsd != null && m.value.costPerCaseUsd != null && (

@@ -65,6 +65,7 @@ Estimates use us-central1 list prices and the GKE Free Tier; see [SETUP.md §11]
 - **Alerts:** email when the month is forecast to exceed the budget, and at 50/90/100% of actual spend.
 - **Cluster shutdown:** all GKE clusters are deleted at 100% of budget.
 - **Cluster time limit:** any cluster older than 8 hours is deleted (checked hourly).
+- **Orphaned load balancer sweep:** once no cluster is left, Gateway load balancer parts the cluster left behind are deleted (checked hourly).
 - **Hard cap:** billing is disabled on the project at 120% of budget.
 
 ## Repository layout

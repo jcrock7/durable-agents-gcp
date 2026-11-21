@@ -18,6 +18,7 @@ Deploy a separate Terraform root module, `platform/cost-guardrails/terraform` (f
    - At **100% actual spend**: deletes every GKE cluster in the project (the main cost driver). Recreated later with Terraform.
    - At **120% actual spend**: **disables billing on the project**: the hard cap.
    - On every message: deletes any GKE cluster **older than 8 hours**, triggered hourly by Cloud Scheduler. This catches a forgotten teardown long before billing data shows it.
+   - On every message, once **no cluster is left**: deletes GKE Gateway load balancer parts (`gkegw1-*` forwarding rules, proxies, URL maps, backend services, health checks). GKE doesn't remove them when a cluster is deleted without deleting its Gateway first, and the forwarding rule keeps billing. Never touches reserved IPs or certificates. Off with `sweep_orphan_lbs = false`.
 5. **Dry-run first.** The enforcer ships in `dry_run` mode (logs decisions only). `cost-guardrails.sh test` publishes a fake 130% notification; after checking the logs, switch `BUDGET_ENFORCEMENT_MODE=enforce`.
 
 Spend inside the platform is also capped at the application layer by per-agent LiteLLM budgets ([ADR-0005](0005-llm-gateway-litellm.md)).

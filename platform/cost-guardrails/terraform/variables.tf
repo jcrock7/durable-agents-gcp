@@ -99,3 +99,9 @@ variable "cluster_max_hours" {
   type        = number
   default     = 8
 }
+
+variable "sweep_orphan_lbs" {
+  description = "Once no GKE cluster is left, delete GKE Gateway load balancer parts (gkegw1-*) the cluster left behind. They keep billing after the cluster is gone."
+  type        = bool
+  default     = true
+}

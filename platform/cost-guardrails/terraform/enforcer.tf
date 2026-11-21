@@ -23,6 +23,7 @@ resource "google_service_account" "builder" {
 locals {
   enforcer_roles = [
     "roles/container.clusterAdmin",            # list and delete GKE clusters
+    "roles/compute.loadBalancerAdmin",         # list and delete orphaned Gateway load balancer parts
     "roles/billing.projectManager",            # read and remove the project's billing link
     "roles/browser",                           # read project metadata for billing info
     "roles/eventarc.eventReceiver",            # receive Pub/Sub events through Eventarc
@@ -114,7 +115,7 @@ resource "google_cloudfunctions2_function" "enforcer" {
   service_config {
     max_instance_count             = 1
     available_memory               = "256M"
-    timeout_seconds                = 120
+    timeout_seconds                = 300 # load balancer deletes are waited on one by one
     ingress_settings               = "ALLOW_INTERNAL_ONLY"
     all_traffic_on_latest_revision = true
     service_account_email          = google_service_account.enforcer.email
@@ -124,6 +125,7 @@ resource "google_cloudfunctions2_function" "enforcer" {
       STOP_CLUSTERS_AT   = tostring(var.stop_clusters_at)
       DISABLE_BILLING_AT = tostring(var.disable_billing_at)
       CLUSTER_MAX_HOURS  = tostring(var.cluster_max_hours)
+      SWEEP_ORPHAN_LBS   = tostring(var.sweep_orphan_lbs)
     }
   }
 

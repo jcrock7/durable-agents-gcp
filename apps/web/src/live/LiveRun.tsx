@@ -109,15 +109,16 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
             <i>tool calls</i>
           </span>
         </span>
-        <span className="grow" />
-        <button type="button" className="btn sm" onClick={() => setDrawer(!drawer)} aria-expanded={drawer}>
-          ⚙ Engine · {view.events.length}
-        </button>
-        {props.demoControls && live.mode === "live" && (
-          <button type="button" className="btn sm live-kill" disabled={!canKill} title={canKill ? "Delete the worker pod running this step" : "Only during a model step"} onClick={() => void kill()}>
-            ⚡ Kill worker
+        <span className="live-actions">
+          <button type="button" className="btn sm" onClick={() => setDrawer(!drawer)} aria-expanded={drawer}>
+            ⚙ Engine · {view.events.length}
           </button>
-        )}
+          {props.demoControls && live.mode === "live" && (
+            <button type="button" className="btn sm live-kill" disabled={!canKill} title={canKill ? "Delete the worker pod running this step" : "Only during a model step"} onClick={() => void kill()}>
+              ⚡ Kill worker
+            </button>
+          )}
+        </span>
       </header>
       {toast && (
         <div className="live-toast" role="status">

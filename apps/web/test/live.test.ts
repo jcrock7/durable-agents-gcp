@@ -176,3 +176,10 @@ describe("canKill after a kill", () => {
     expect(reduceLive(G, running({ state: "SCHEDULED" }), T0).canKill).toBe(false);
   });
 });
+
+describe("header worker", () => {
+  it("shows the pod name from the worker's <hostname>/<agent> identity", () => {
+    const res = { ...running(), workerIdentity: "worker-fd9fcc98f-2h8ls/invoice-exception-resolver" };
+    expect(reduceLive(G, res, T0).header.worker).toBe("worker-fd9fcc98f-2h8ls");
+  });
+});

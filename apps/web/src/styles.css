@@ -342,6 +342,8 @@ button.user-chip { background: var(--surface); }
 .live-pill.replay { background: var(--info-bg); color: var(--info); }
 .live-pill.done { background: var(--idle-bg); color: var(--idle); }
 .live-stats { display: flex; gap: 18px; margin-left: 8px; }
+.live-actions { display: flex; gap: 8px; margin-left: auto; flex-wrap: nowrap; }
+.live-bar .t2 { min-width: 0; }
 .live-stats > span { display: flex; flex-direction: column; line-height: 1.2; }
 .live-stats b { font-size: 15px; }
 .live-stats i { font-style: normal; font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }

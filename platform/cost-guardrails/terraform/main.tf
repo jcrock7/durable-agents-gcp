@@ -12,6 +12,7 @@ locals {
     "cloudbuild.googleapis.com",
     "cloudfunctions.googleapis.com",
     "cloudscheduler.googleapis.com",
+    "compute.googleapis.com", # orphaned load balancer sweep
     "container.googleapis.com",
     "eventarc.googleapis.com",
     "artifactregistry.googleapis.com",

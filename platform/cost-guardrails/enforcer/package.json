@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@google-cloud/billing": "^6.2.0",
+    "@google-cloud/compute": "^6.15.0",
     "@google-cloud/container": "^7.3.0",
     "@google-cloud/functions-framework": "^5.0.5"
   }

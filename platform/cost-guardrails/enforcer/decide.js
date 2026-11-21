@@ -25,6 +25,8 @@ export function loadConfig(env) {
     disableBillingAt: num('DISABLE_BILLING_AT', 1.2),
     // Delete any GKE cluster older than this many hours. 0 disables the check.
     clusterMaxHours: num('CLUSTER_MAX_HOURS', 8),
+    // Delete GKE Gateway load balancer parts (gkegw1-*) left behind once no cluster exists.
+    sweepOrphanLbs: env.SWEEP_ORPHAN_LBS !== 'false',
   };
 }
 
@@ -84,4 +86,27 @@ export function decide({ message, clusters, billingEnabled, now, config }) {
   }
 
   return { ratio, deleteClusters: [...toDelete.values()], disableBilling, reasons };
+}
+
+// GKE Gateway names every load balancer part it creates with this prefix.
+export const GATEWAY_PREFIX = 'gkegw1-';
+
+// Deletion order: each kind is referenced by the one before it, so it can only go once those are gone.
+export const LB_KINDS = ['forwardingRule', 'targetHttpsProxy', 'targetHttpProxy', 'urlMap', 'backendService', 'healthCheck'];
+
+// Plans deletion of Gateway load balancer parts that outlived their cluster. GKE doesn't remove them
+// when a cluster is deleted, and the forwarding rule keeps billing. Acts only when the project has no
+// cluster left (STOPPING ones count as gone), so it can never touch a live Gateway.
+// resources: [{ kind, name }]. Returns deletes in dependency order.
+export function planLbSweep({ clusters, resources, config }) {
+  if (!config.sweepOrphanLbs) return { deleteLbResources: [], reasons: [] };
+  if (clusters.some((c) => c.status !== 'STOPPING')) return { deleteLbResources: [], reasons: [] };
+
+  const orphans = resources
+    .filter((r) => LB_KINDS.includes(r.kind) && r.name.startsWith(GATEWAY_PREFIX))
+    .sort((a, b) => LB_KINDS.indexOf(a.kind) - LB_KINDS.indexOf(b.kind));
+  const reasons = orphans.length
+    ? [`no GKE cluster left, ${orphans.length} Gateway load balancer part(s) remain: delete`]
+    : [];
+  return { deleteLbResources: orphans, reasons };
 }

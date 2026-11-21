@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decide, loadConfig, parsePayload } from './decide.js';
+import { decide, loadConfig, parsePayload, planLbSweep } from './decide.js';
 
-const config = { projectId: 'p', mode: 'dry_run', stopClustersAt: 1.0, disableBillingAt: 1.2, clusterMaxHours: 8 };
+const config = { projectId: 'p', mode: 'dry_run', stopClustersAt: 1.0, disableBillingAt: 1.2, clusterMaxHours: 8, sweepOrphanLbs: true };
 const now = new Date('2026-11-17T12:00:00Z');
 const young = { name: 'agents-demo', location: 'us-central1', status: 'RUNNING', createTime: '2026-11-17T10:00:00Z' };
 const old = { name: 'forgotten', location: 'us-central1', status: 'RUNNING', createTime: '2026-11-16T12:00:00Z' };
@@ -74,4 +74,42 @@ test('loadConfig applies defaults and rejects bad values', () => {
   assert.throws(() => loadConfig({}), /PROJECT_ID/);
   assert.throws(() => loadConfig({ PROJECT_ID: 'p', ENFORCEMENT_MODE: 'yolo' }), /ENFORCEMENT_MODE/);
   assert.throws(() => loadConfig({ PROJECT_ID: 'p', STOP_CLUSTERS_AT: 'abc' }), /STOP_CLUSTERS_AT/);
+});
+
+const lbParts = [
+  { kind: 'healthCheck', name: 'gkegw1-yjgp-agents-api-8080-hc' },
+  { kind: 'urlMap', name: 'gkegw1-yjgp-agents-external-um' },
+  { kind: 'forwardingRule', name: 'gkegw1-yjgp-agents-external-fr' },
+  { kind: 'backendService', name: 'gkegw1-yjgp-agents-api-8080-bs' },
+  { kind: 'targetHttpsProxy', name: 'gkegw1-yjgp-agents-external-jyhcaclz49ji' },
+  { kind: 'forwardingRule', name: 'my-own-lb-fr' },
+  { kind: 'urlMap', name: 'something-else' },
+];
+
+test('LB sweep: no cluster left, deletes only gkegw1- parts in dependency order', () => {
+  const plan = planLbSweep({ clusters: [], resources: lbParts, config });
+  assert.deepEqual(plan.deleteLbResources.map((r) => r.kind), ['forwardingRule', 'targetHttpsProxy', 'urlMap', 'backendService', 'healthCheck']);
+  assert.ok(plan.deleteLbResources.every((r) => r.name.startsWith('gkegw1-')));
+  assert.equal(plan.reasons.length, 1);
+});
+
+test('LB sweep: a live cluster means nothing is touched', () => {
+  const plan = planLbSweep({ clusters: [young], resources: lbParts, config });
+  assert.equal(plan.deleteLbResources.length, 0);
+});
+
+test('LB sweep: a STOPPING cluster counts as gone', () => {
+  const plan = planLbSweep({ clusters: [{ ...young, status: 'STOPPING' }], resources: lbParts, config });
+  assert.equal(plan.deleteLbResources.length, 5);
+});
+
+test('LB sweep: nothing left over gives no reasons', () => {
+  assert.deepEqual(planLbSweep({ clusters: [], resources: [], config }), { deleteLbResources: [], reasons: [] });
+});
+
+test('LB sweep: SWEEP_ORPHAN_LBS=false turns it off', () => {
+  assert.equal(loadConfig({ PROJECT_ID: 'p', SWEEP_ORPHAN_LBS: 'false' }).sweepOrphanLbs, false);
+  assert.equal(loadConfig({ PROJECT_ID: 'p' }).sweepOrphanLbs, true);
+  const plan = planLbSweep({ clusters: [], resources: lbParts, config: { ...config, sweepOrphanLbs: false } });
+  assert.equal(plan.deleteLbResources.length, 0);
 });

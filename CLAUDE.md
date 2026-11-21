@@ -59,7 +59,7 @@ Decisions are recorded in `docs/adr/NNNN-slug.md`, numbered in sequence (next is
 
 - `.env`, anything secret, Terraform state or `*.tfvars`, kubeconfigs, key files. Pre-commit (gitleaks) and CI secret scanning enforce this.
 - `platform/` and `scripts/gcp`, `scripts/gke` change real cloud infrastructure and cost money: do not run them, and change them only when the task is about them.
-- `factory.yml`, `CLAUDE.md` and `.github/` are owner-controlled.
+- `factory.yml`, `CLAUDE.md`, `.github/`, `.claude/`, `.mcp.json` and `docs/factory/templates/` are control paths: never modify them; changes reach main only through a PR the owner merges.
 
 ## Pointers
 

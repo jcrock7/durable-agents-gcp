@@ -8,7 +8,7 @@ The three shared services every agent depends on, as Kustomize bases. They aren'
 | [`temporal/`](temporal/) | Temporal CLI dev server: gRPC on 7233, Web UI on 8233, SQLite history on a 1 Gi volume | On-demand | [0002](../../docs/adr/0002-temporal-durable-runtime.md), [0011](../../docs/adr/0011-temporal-single-pod.md) |
 | [`litellm/`](litellm/) | LiteLLM gateway on 4000: model aliases `fast` and `smart` on Vertex AI, Vertex safety filters, fallback smart → fast, spend logs in Postgres, prompt-injection guardrail | Spot on GKE | [0005](../../docs/adr/0005-llm-gateway-litellm.md), [0012](../../docs/adr/0012-guardrails-lightweight.md) |
 
-All images are pinned by version and digest. Versions as of this build: CloudNativePG 1.30.1, `postgresql:17-standard-bookworm`, Temporal CLI 1.10.0, LiteLLM 1.106.6 (the official `litellm-non_root` image).
+All images are pinned by version and digest. Versions as of this build: CloudNativePG 1.30.1, `postgresql:17-system-bookworm` (the variant with the Barman Cloud tools the GKE backups need), Temporal CLI 1.10.0, LiteLLM 1.106.6 (the official `litellm-non_root` image).
 
 Every service runs as a non-root user with privilege escalation off and all Linux capabilities dropped, so they pass the `restricted` Pod Security standard, which the namespace enforces: a pod that doesn't comply is rejected. Temporal and LiteLLM also use a read-only root filesystem, with `/tmp` as their only writable path besides their data volumes.
 

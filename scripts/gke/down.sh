@@ -36,6 +36,15 @@ done
 
 if kubectl config current-context 2>/dev/null | grep -q "${TF_VAR_cluster_name}"; then
   # Base backup of Postgres to the foundation's GCS bucket (WAL is archived continuously).
+  # A backup can only finish while WAL archiving works; if it doesn't, say so and move on rather
+  # than wait 10 minutes for a backup that will never complete.
+  archiving="$(kubectl -n agents get cluster.postgresql.cnpg.io/agents-pg \
+    -o jsonpath='{.status.conditions[?(@.type=="ContinuousArchiving")].status}' 2>/dev/null || true)"
+  if $backup && [[ "$archiving" == "False" ]]; then
+    warn "Postgres WAL archiving is failing, so no backup can be taken. Continuing without one."
+    warn "Cause: kubectl -n agents get cluster agents-pg -o jsonpath='{.status.conditions}'"
+    backup=false
+  fi
   if $backup && kubectl -n agents get cluster.postgresql.cnpg.io/agents-pg >/dev/null 2>&1; then
     name="before-down-$(date -u +%Y%m%d%H%M%S)"
     log "backing up Postgres to GCS (${name}); skip with --no-backup"

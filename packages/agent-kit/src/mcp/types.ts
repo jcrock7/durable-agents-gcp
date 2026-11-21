@@ -28,6 +28,8 @@ export type ToolCaller = "workflow" | "activity" | "model";
  * results are kept only as a size, because they can be large and may hold data the run must not copy.
  */
 export interface ToolCallRecord {
+  /** Unique per call: the model's tool-call id for model calls, else a random UUID. */
+  id: string;
   /** `server:tool`. */
   ref: string;
   server: string;
@@ -42,4 +44,6 @@ export interface ToolCallRecord {
   durationMs: number;
   /** ISO timestamp of the call's start. */
   at: string;
+  /** Answered from the replay cache (a retried activity resuming), not by the server. */
+  replayed?: true;
 }

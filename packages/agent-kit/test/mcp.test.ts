@@ -10,6 +10,7 @@ import {
   FailureType,
   mcpServerUrl,
   McpToolbox,
+  replayKey,
   runToolLoop,
   type McpConnection,
   type ToolCallRecord,
@@ -185,5 +186,39 @@ describe("mcpServerUrl", () => {
   it("uses MCP_<SERVER>_URL, else the in-cluster service", () => {
     expect(mcpServerUrl("erp-read", { MCP_ERP_READ_URL: "http://localhost:9000/mcp" })).toBe("http://localhost:9000/mcp");
     expect(mcpServerUrl("match-engine", {})).toBe("http://mcp-match-engine:8080/mcp");
+  });
+});
+
+describe("replay cache", () => {
+  it("replayKey ignores key order", () => {
+    expect(replayKey("a:b", { x: 1, y: { b: 2, a: 1 } })).toBe(replayKey("a:b", { y: { a: 1, b: 2 }, x: 1 }));
+    expect(replayKey("a:b", { x: 1 })).not.toBe(replayKey("a:c", { x: 1 }));
+  });
+
+  it("replays a cached result without calling the server", async () => {
+    let serverCalls = 0;
+    const counting = () => {
+      const server = erpServer();
+      const connection = connectInMemory(server);
+      return connection.then((c) => ({ ...c, listTools: () => c.listTools(), close: () => c.close(), callTool: (n: string, a: Record<string, unknown>, s?: AbortSignal) => (serverCalls++, c.callTool(n, a, s)) }));
+    };
+    const replay = new Map([[replayKey("erp:get_invoice", { id: "INV-1" }), "cached row"]]);
+    const results: string[] = [];
+    toolbox = new McpToolbox({ policy, connect: counting, replay, onResult: (r) => results.push(r.ref) });
+    const tools = await toolbox.modelTools();
+    const out = await tools["erp__get_invoice"]!.execute!({ id: "INV-1" }, { toolCallId: "c1", messages: [] });
+    expect(out).toBe("cached row");
+    expect(serverCalls).toBe(0);
+    expect(results).toEqual([]);
+    expect(toolbox.calls[0]).toMatchObject({ ref: "erp:get_invoice", outcome: "ok", replayed: true, durationMs: 0, id: "c1" });
+  });
+
+  it("model tool calls carry the AI SDK toolCallId as id", async () => {
+    const box = newToolbox();
+    const tools = await box.modelTools();
+    await tools["erp__get_vendor"]!.execute!({ id: "V1" }, { toolCallId: "call-42", messages: [] });
+    expect(box.calls[0]!.id).toBe("call-42");
+    await box.call("erp:get_invoice", { id: "INV-1" }, "activity");
+    expect(box.calls[1]!.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 });

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { ApplicationFailure } from "@temporalio/common";
 import { jsonSchema, tool, type ToolCallRepairFunction, type ToolSet } from "ai";
 import { FailureType } from "../failure-types.js";
@@ -17,6 +18,12 @@ export interface McpToolboxOptions {
    * that needs the content (for example to cite it as evidence) collects it here.
    */
   onResult?: (record: ToolCallRecord, result: McpCallResult) => void;
+  /**
+   * Results from an earlier attempt of this activity, keyed by `replayKey(ref, args)`. A model
+   * tool call that hits the cache is answered from it without reaching the server, and recorded
+   * with `replayed: true`. `onResult` is not called for it.
+   */
+  replay?: Map<string, string>;
 }
 
 /** A tool the agent may use, as listed by its server. */
@@ -62,10 +69,10 @@ export class McpToolbox {
    * write tools when the caller is the model. A tool that reports an error returns normally with
    * `isError`; a transport failure throws and is retried by the activity's policy.
    */
-  async call(ref: string, args: Record<string, unknown>, caller: ToolCaller, signal?: AbortSignal): Promise<McpCallResult> {
+  async call(ref: string, args: Record<string, unknown>, caller: ToolCaller, signal?: AbortSignal, id: string = randomUUID()): Promise<McpCallResult> {
     const { server, tool: name } = parseToolRef(ref);
     const startedAt = Date.now();
-    const base = { ref, server, tool: name, caller, args, at: new Date(startedAt).toISOString() };
+    const base = { id, ref, server, tool: name, caller, args, at: new Date(startedAt).toISOString() };
 
     const permitted = caller === "model" ? this.allow.isModelVisible(server, name) : this.allow.isAllowed(server, name);
     if (!permitted) {
@@ -108,8 +115,14 @@ export class McpToolbox {
       tools[modelToolName(info.server, info.name)] = tool({
         description: info.description ?? info.ref,
         inputSchema: jsonSchema(info.inputSchema as Parameters<typeof jsonSchema>[0]),
-        execute: async (input: unknown) => {
-          const result = await this.call(info.ref, (input ?? {}) as Record<string, unknown>, "model", signal);
+        execute: async (input: unknown, { toolCallId }: { toolCallId: string }) => {
+          const args = (input ?? {}) as Record<string, unknown>;
+          const cached = this.options.replay?.get(replayKey(info.ref, args));
+          if (cached !== undefined) {
+            this.record({ id: toolCallId, ref: info.ref, server: info.server, tool: info.name, caller: "model", args, outcome: "ok", resultChars: cached.length, durationMs: 0, at: new Date().toISOString(), replayed: true });
+            return cached;
+          }
+          const result = await this.call(info.ref, args, "model", signal, toolCallId);
           const text = resultText(result, this.maxResultChars);
           return result.isError ? `ERROR: ${text}` : text;
         },
@@ -127,6 +140,7 @@ export class McpToolbox {
       const ref = fromModelToolName(toolCall.toolName);
       const parsed = safeParseRef(ref);
       this.record({
+        id: toolCall.toolCallId,
         ref,
         server: parsed?.server ?? "unknown",
         tool: parsed?.tool ?? toolCall.toolName,
@@ -170,6 +184,17 @@ export function resultText(result: McpCallResult, maxChars = 20_000): string {
     .join("\n");
   const full = text || (result.structuredContent === undefined ? "" : JSON.stringify(result.structuredContent));
   return full.length > maxChars ? `${full.slice(0, maxChars)}\n[cut at ${maxChars} characters]` : full;
+}
+
+/** The replay-cache key for a call: the tool ref and its arguments, with object keys sorted. */
+export function replayKey(ref: string, args: Record<string, unknown>): string {
+  const sorted = (v: unknown): unknown =>
+    Array.isArray(v)
+      ? v.map(sorted)
+      : v && typeof v === "object"
+        ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted((v as Record<string, unknown>)[k])]))
+        : v;
+  return `${ref}|${JSON.stringify(sorted(args))}`;
 }
 
 export function modelToolName(server: string, toolName: string): string {

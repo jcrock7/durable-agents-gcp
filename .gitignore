@@ -79,3 +79,5 @@ platform/k8s/overlays/*/images.env
 
 # ---------- Generated synthetic data ----------
 agents/general/invoice-exception-resolver/data/out/
+
+.superpowers/

@@ -1,12 +1,13 @@
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { log } from "@temporalio/activity";
+import { Context, log } from "@temporalio/activity";
 import {
   connectHttp,
   gatewayCostUsd,
   loadSkills,
   MODEL_CALL,
   McpToolbox,
+  replayKey,
   resultText,
   runToolLoop,
   skillsPrompt,
@@ -15,6 +16,7 @@ import {
   withHeartbeat,
   type McpCallResult,
   type McpConnection,
+  type McpToolboxOptions,
   type ModelAlias,
   type ToolCallRecord,
   type ToolCaller,
@@ -31,6 +33,7 @@ import {
   READ_INVOICE_SYSTEM,
   readInvoicePrompt,
 } from "./prompts/index.js";
+import { addCall, emptyProgress, resumeFrom } from "./progress.js";
 import { checkCitations } from "./route.js";
 import { InvoiceFieldsSchema, MessageSchema, ProposalSchema, type Action, type InvoiceFields, type MessageDraft, type Proposal } from "./schemas.js";
 import type { Adjustment, Evidence, InvoiceFacts, MatchResult, Recipient, Usage } from "./types.js";
@@ -80,8 +83,11 @@ const usageOf = (step: string, model: string, u: { inputTokens?: number; outputT
  * made, so they land in the workflow history and the portal's inspector.
  */
 export function createActivities({ models, connect = (server) => connectHttp(server), skillRoots = defaultSkillRoots() }: ActivityDeps) {
-  const withToolbox = async <T>(fn: (toolbox: McpToolbox) => Promise<T>, onResult?: (r: ToolCallRecord, res: McpCallResult) => void): Promise<T & { calls: ToolCallRecord[] }> => {
-    const toolbox = new McpToolbox({ policy: agentConfig.tools, connect, onResult });
+  const withToolbox = async <T>(
+    fn: (toolbox: McpToolbox) => Promise<T>,
+    hooks: Pick<McpToolboxOptions, "onResult" | "onCall" | "replay"> = {},
+  ): Promise<T & { calls: ToolCallRecord[] }> => {
+    const toolbox = new McpToolbox({ policy: agentConfig.tools, connect, ...hooks });
     try {
       const value = await fn(toolbox);
       return { ...value, calls: toolbox.calls };
@@ -126,7 +132,8 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
             })),
           };
           const skill = await skills(["untrusted-content"]);
-          const { output, usage, response } = await withHeartbeat((abortSignal) =>
+          const { output, usage, response } = await withHeartbeat((abortSignal, beat) =>
+            (beat(emptyProgress("Reading the invoice")),
             generateText({
               ...MODEL_CALL,
               abortSignal,
@@ -134,7 +141,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
               system: `${READ_INVOICE_SYSTEM}\n\n${skill.text}`,
               prompt: readInvoicePrompt(text),
               output: Output.object({ schema: InvoiceFieldsSchema }),
-            }),
+            })),
           );
           return {
             fields: output as InvoiceFields,
@@ -157,23 +164,46 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
         { ref: "E1", source: "match-engine:run_match", args: { invoice_id: input.invoiceId }, excerpt: input.match.findings.map((f) => `${f.code}: ${f.message}`).join("\n").slice(0, EXCERPT_CHARS) },
         { ref: "E2", source: "docs:read_pdf_text", args: { path: input.documentPath }, excerpt: input.invoiceText.slice(0, EXCERPT_CHARS) },
       ];
-      const collect = (record: ToolCallRecord, result: McpCallResult) => {
-        if (record.caller !== "model" || record.outcome !== "ok") return;
-        evidence.push({ ref: `E${evidence.length + 1}`, source: record.ref, args: record.args, excerpt: resultText(result, EXCERPT_CHARS) || "(no rows)" });
+      // A retry resumes from the last attempt's heartbeat details: tool calls it already made are
+      // answered from the replay cache instead of the server (Live Run view, failover demo).
+      const resume = resumeFrom(Context.current().info.heartbeatDetails);
+      let progress = emptyProgress("Gathering evidence");
+      let report: (details: unknown) => void = () => {};
+      const cite = (record: ToolCallRecord, text: string) =>
+        evidence.push({ ref: `E${evidence.length + 1}`, source: record.ref, args: record.args, excerpt: text.slice(0, EXCERPT_CHARS) || "(no rows)" });
+      const onResult = (record: ToolCallRecord, result: McpCallResult) => {
+        const ok = record.caller === "model" && record.outcome === "ok";
+        const text = ok ? resultText(result, EXCERPT_CHARS) : undefined;
+        if (text !== undefined) cite(record, text);
+        progress = addCall(progress, record, text);
+        report(progress);
+      };
+      const onCall = (record: ToolCallRecord) => {
+        if (record.replayed) {
+          const text = resume.replay.get(replayKey(record.ref, record.args)) ?? "";
+          cite(record, text);
+          progress = addCall(progress, record, text);
+          report(progress);
+        } else if (record.outcome !== "ok" || record.caller !== "model") {
+          progress = addCall(progress, record);
+          report(progress);
+        }
       };
       try {
         return await withToolbox(async (t) => {
           const skill = await skills(["three-way-match-exceptions", "untrusted-content"]);
-          const loop = await withHeartbeat((abortSignal) =>
-            runToolLoop({
+          const loop = await withHeartbeat((abortSignal, beat) => {
+            report = beat;
+            beat(progress);
+            return runToolLoop({
               model: models[agentConfig.models.evidence],
               system: `${EVIDENCE_SYSTEM}\n\n${skill.text}`,
               prompt: evidencePrompt(input.invoiceId, input.match, input.invoiceText.slice(0, 6_000), input.record),
               toolbox: t,
               maxSteps: agentConfig.limits.evidenceRounds + 1,
               abortSignal,
-            }),
-          );
+            });
+          });
           log.info("evidence gathered", { steps: loop.steps, calls: loop.calls.length, stoppedAtLimit: loop.stoppedAtLimit });
           return {
             notes: loop.text,
@@ -183,7 +213,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
             skillVersions: skill.versions,
             usage: usageOf("gather evidence", agentConfig.models.evidence, loop.usage, loop.usage.costUsd),
           };
-        }, collect);
+        }, { onResult, onCall, replay: resume.replay });
       } catch (error) {
         throw toActivityFailure(error);
       }
@@ -199,7 +229,8 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
     }) {
       try {
         const skill = await skills(["ap-resolution-policy", "three-way-match-exceptions", "untrusted-content"]);
-        const { output, usage, response } = await withHeartbeat((abortSignal) =>
+        const { output, usage, response } = await withHeartbeat((abortSignal, beat) =>
+          (beat(emptyProgress("Proposing a resolution")),
           generateText({
             ...MODEL_CALL,
             abortSignal,
@@ -207,7 +238,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
             system: `${PROPOSE_SYSTEM}\n\n${skill.text}`,
             prompt: proposePrompt(input.invoiceId, input.match, input.evidence, input.notes, input.revision),
             output: Output.object({ schema: ProposalSchema }),
-          }),
+          })),
         );
         const proposal = output as Proposal;
         const { cited, valid } = checkCitations(proposal, input.evidence.map((e) => e.ref));
@@ -238,7 +269,8 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
           if (input.recipient === "vendor") to = String(rows(await call(t, "erp-read:get_vendor", { vendor_id: String(invoice?.vendor_id) }, "activity"))[0]?.email);
           if (input.recipient === "buyer") to = String(rows(await call(t, "erp-read:get_purchase_order", { po_id: String(invoice?.po_id) }, "activity"))[0]?.buyer_email);
           const skill = await skills(["vendor-correspondence", "untrusted-content"]);
-          const { output, usage, response } = await withHeartbeat((abortSignal) =>
+          const { output, usage, response } = await withHeartbeat((abortSignal, beat) =>
+            (beat(emptyProgress("Drafting the message")),
             generateText({
               ...MODEL_CALL,
               abortSignal,
@@ -246,7 +278,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
               system: `${DRAFT_MESSAGE_SYSTEM}\n\n${skill.text}`,
               prompt: draftMessagePrompt(input.recipient, input.purpose, { ...input.facts, vendorInvoiceNumber: invoice?.vendor_invoice_number, poId: invoice?.po_id }),
               output: Output.object({ schema: MessageSchema }),
-            }),
+            })),
           );
           return { message: { ...(output as MessageDraft), to }, skillVersions: skill.versions, usage: usageOf("draft message", agentConfig.models.draft, usage, gatewayCostUsd(response.headers)) };
         });

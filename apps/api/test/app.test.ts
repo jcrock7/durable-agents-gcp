@@ -159,8 +159,8 @@ describe("portal API", () => {
   });
 
   it("reports who is signed in and where the identity came from", async () => {
-    expect((await app.inject("/api/me")).json()).toEqual({ user: "local-user", source: "local" });
-    expect((await app.inject({ url: "/api/me", headers: { "x-goog-authenticated-user-email": "accounts.google.com:a@b.c" } })).json()).toEqual({ user: "a@b.c", source: "iap" });
+    expect((await app.inject("/api/me")).json()).toEqual({ user: "local-user", source: "local", demoControls: false });
+    expect((await app.inject({ url: "/api/me", headers: { "x-goog-authenticated-user-email": "accounts.google.com:a@b.c" } })).json()).toEqual({ user: "a@b.c", source: "iap", demoControls: false });
   });
 
   it("computes business figures from the loaded cases", async () => {

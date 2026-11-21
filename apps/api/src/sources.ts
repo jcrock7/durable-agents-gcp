@@ -80,6 +80,10 @@ export interface DeploymentStatus {
 export interface KubernetesSource {
   deployments(names: string[]): Promise<DeploymentStatus[]>;
   postgresReady(): Promise<boolean | null>;
+  /** Worker pods (label app.kubernetes.io/name=worker), for the demo kill. */
+  workerPods?(): Promise<Array<{ name: string; ready: boolean }>>;
+  /** Delete a pod with no grace period: a crash, not a shutdown. Needs the demo-worker-killer Role. */
+  deletePod?(name: string): Promise<void>;
 }
 
 const PENDING_STATES: Record<number, string> = { 1: "SCHEDULED", 2: "STARTED", 3: "CANCEL_REQUESTED", 4: "PAUSED", 5: "PAUSE_REQUESTED" };
@@ -291,6 +295,23 @@ export function kubernetesSource(namespace: string): KubernetesSource {
             : {}),
         };
       });
+    },
+    async workerPods() {
+      type Pod = { metadata: { name: string; deletionTimestamp?: string }; status?: { conditions?: Array<{ type: string; status: string }> } };
+      const pods = await get<{ items: Pod[] }>(`/api/v1/namespaces/${namespace}/pods?labelSelector=${encodeURIComponent("app.kubernetes.io/name=worker")}`);
+      return (pods?.items ?? [])
+        .filter((p) => !p.metadata.deletionTimestamp)
+        .map((p) => ({ name: p.metadata.name, ready: p.status?.conditions?.some((c) => c.type === "Ready" && c.status === "True") ?? false }));
+    },
+    async deletePod(name) {
+      if (!base) throw new Error("not running in Kubernetes");
+      const token = (await readFile(tokenPath, "utf8")).trim();
+      const res = await fetch(`${base}/api/v1/namespaces/${namespace}/pods/${encodeURIComponent(name)}?gracePeriodSeconds=0`, {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!res.ok) throw new Error(`delete pod ${name}: HTTP ${res.status}`);
     },
     async postgresReady() {
       const c = await get<{ status?: { readyInstances?: number; instances?: number } }>(`/apis/postgresql.cnpg.io/v1/namespaces/${namespace}/clusters/agents-pg`);

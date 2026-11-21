@@ -3,6 +3,7 @@ import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
+import { registerDemo, type ErpDemoSource } from "./demo.js";
 import { classifyFailover, condenseHistory, lastWorker } from "./live.js";
 import { AGENTS, MCP_SERVERS, agentById, agentForWorkflow, type AgentEntry } from "./registry.js";
 import type { KubernetesSource, LiteLLMSource, RunInfo, TemporalSource } from "./sources.js";
@@ -19,6 +20,10 @@ export interface AppDeps {
   skillsDir?: string;
   /** What one case costs to work by hand (USD), for the comparison on the overview. Unset: not shown. */
   manualCostPerCaseUsd?: number;
+  /** Demo controls (sample case, kill worker). Set only when DEMO_CONTROLS=true; otherwise the routes don't exist. */
+  demo?: { erp: ErpDemoSource };
+  /** Temporal Web UI base URL, for the Live Run drawer's link. */
+  temporalUiUrl?: string;
 }
 
 /** One row in a case list, the same shape for every agent. */
@@ -216,7 +221,13 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   app.get("/healthz", async () => ({ ok: true }));
 
-  app.get("/api/me", async (req) => ({ user: identity(req, deps.localUser), source: req.headers["x-goog-authenticated-user-email"] ? "iap" : "local" }));
+  app.get("/api/me", async (req) => ({
+    user: identity(req, deps.localUser),
+    source: req.headers["x-goog-authenticated-user-email"] ? "iap" : "local",
+    demoControls: !!deps.demo,
+    ...(deps.temporalUiUrl ? { temporalUiUrl: deps.temporalUiUrl } : {}),
+  }));
+  if (deps.demo) registerDemo(app, { temporal, kubernetes, erp: deps.demo.erp });
 
   /** A skill's action table, for the version on disk. 404 when the run used another version: the portal then shows nothing. */
   app.get<{ Params: { id: string; name: string }; Querystring: { version?: string } }>("/api/agents/:id/skills/:name", async (req, reply) => {

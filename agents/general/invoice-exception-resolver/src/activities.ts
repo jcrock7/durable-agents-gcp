@@ -32,6 +32,7 @@ import {
   proposePrompt,
   READ_INVOICE_SYSTEM,
   readInvoicePrompt,
+  splitNarration,
 } from "./prompts/index.js";
 import { addCall, emptyProgress, resumeFrom } from "./progress.js";
 import { checkCitations } from "./route.js";
@@ -206,7 +207,7 @@ export function createActivities({ models, connect = (server) => connectHttp(ser
           });
           log.info("evidence gathered", { steps: loop.steps, calls: loop.calls.length, stoppedAtLimit: loop.stoppedAtLimit });
           return {
-            notes: loop.text,
+            ...splitNarration(loop.text),
             evidence,
             steps: loop.steps,
             stoppedAtLimit: loop.stoppedAtLimit,

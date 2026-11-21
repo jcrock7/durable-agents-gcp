@@ -100,6 +100,8 @@ export interface TimelineEntry {
   at: string;
   detail: string;
   state: "done" | "now" | "error";
+  /** One or two plain-language sentences for the Live Run feed. Absent on runs from before narration. */
+  narration?: string;
 }
 
 /** Everything the portal shows about one case (the caseState query). */

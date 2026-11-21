@@ -49,15 +49,15 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
   let recheck = false;
   setHandler(recheckSignal, ({ reason }) => {
     recheck = true;
-    step("Re-check requested", reason);
+    step("Re-check requested", reason, "done", "Someone asked me to re-check now instead of waiting for the daily check.");
   });
   const review = new ReviewGate({ allowEscalate: true });
   let humanTouches = 0;
 
-  function step(name: string, detail = "", s: "done" | "now" | "error" = "done") {
+  function step(name: string, detail = "", s: "done" | "now" | "error" = "done", narration?: string) {
     const last = state.timeline.at(-1);
     if (last?.state === "now") last.state = "done";
-    state.timeline.push({ name, at: new Date().toISOString(), detail, state: s });
+    state.timeline.push({ name, at: new Date().toISOString(), detail, state: s, ...(narration?.trim() ? { narration: narration.trim() } : {}) });
   }
   function enter(stage: Stage) {
     state.stage = stage;
@@ -81,7 +81,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
     state.status = status;
     state.reasons.push(...reasons);
     enter("done");
-    step(`Finished: ${status}`, reasons.join("; "));
+    step(`Finished: ${status}`, reasons.join("; "), "done", `Done. The case is ${status.replace(/_/g, " ")}${reasons.length ? `: ${reasons.join("; ")}` : ""}.`);
     const last = state.timeline.at(-1);
     if (last) last.state = "done";
     await settle();
@@ -105,7 +105,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
   }
   async function holdAndFinish(status: CaseStatus, reasons: string[]): Promise<CaseResult> {
     record(await setHold({ invoiceId: input.invoiceId }));
-    step("Invoice on hold", reasons.join("; "));
+    step("Invoice on hold", reasons.join("; "), "done", `I put the invoice on hold: ${reasons.join("; ")}.`);
     return finish(status, reasons);
   }
 
@@ -119,7 +119,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
       const { match, calls } = await runMatch({ invoiceId: input.invoiceId });
       record({ calls });
       state.match = match;
-      step("Match", `${match.status}: ${match.findings.map((f) => f.code).join(", ") || "no findings"}`);
+      step("Match", `${match.status}: ${match.findings.map((f) => f.code).join(", ") || "no findings"}`, "done", match.status === "matched" ? "The three-way match passed, so there is nothing to resolve." : `The three-way match flagged ${match.findings.map((f) => f.code).join(", ")}.`);
       if (match.status === "matched") {
         enter("posting");
         record(await postResolution({ invoiceId: input.invoiceId, exceptionId: input.exceptionId, action: "cleared_by_rematch", amountCents: 0, note: "The invoice now matches its PO and receipts.", approvedBy: "", runId, invoiceStatus: "resolved" }));
@@ -136,7 +136,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
         invoiceText = read.text;
         documentPath = read.documentPath;
         erpRecord = read.record;
-        step("Read invoice PDF", `${read.fields.vendorInvoiceNumber} · ${read.fields.totalDue}`);
+        step("Read invoice PDF", `${read.fields.vendorInvoiceNumber} · ${read.fields.totalDue}`, "done", read.fields.narration);
         if (read.fields.containsInstructions) {
           return holdAndFinish("blocked", [`the invoice contains instructions addressed to the system: ${read.fields.instructionsSummary || "unspecified"}`]);
         }
@@ -148,7 +148,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
       record(gathered);
       state.evidence = gathered.evidence;
       state.notes = gathered.notes;
-      step("Gather evidence", `${gathered.evidence.length} items · ${gathered.steps} model steps${gathered.stoppedAtLimit ? " · stopped at the round limit" : ""}`);
+      step("Gather evidence", `${gathered.evidence.length} items · ${gathered.steps} model steps${gathered.stoppedAtLimit ? " · stopped at the round limit" : ""}`, "done", gathered.narration);
 
       // 4–5. Propose and route; a person reviews when the rules say so, and may send it back.
       let revision: { previous: NonNullable<CaseState["proposal"]>; feedback: string } | undefined;
@@ -165,7 +165,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
           return n ? { ...e, relevance: n.relevance, relevanceNote: n.note } : { ...e, relevance: undefined, relevanceNote: undefined };
         });
         state.draftVersion += 1;
-        step(revision ? "Revise proposal" : "Propose resolution", `${proposed.proposal.action} (${proposed.proposal.confidence})`);
+        step(revision ? "Revise proposal" : "Propose resolution", `${proposed.proposal.action} (${proposed.proposal.confidence})`, "done", proposed.proposal.narration);
 
         const adj = await computeAdjustment({ invoiceId: input.invoiceId, action: proposed.proposal.action });
         record(adj);
@@ -173,28 +173,28 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
         // The policy-fit verdict is always recorded; it only changes the path for runs started after the rule shipped.
         const decision = route({ proposal: proposed.proposal, adjustment: adj.adjustment, match, citationsValid: proposed.citationsValid }, agentConfig, { enforcePolicyFit: patched("policy-fit-rule") });
         state.route = decision;
-        step("Route", `${decision.path}${decision.needsPerson ? ` → person: ${decision.reasons.join("; ")}` : ""}`);
+        step("Route", `${decision.path}${decision.needsPerson ? ` → person: ${decision.reasons.join("; ")}` : ""}`, "done", decision.path === "escalate" ? `This goes to a person to handle: ${decision.reasons.join("; ")}.` : decision.needsPerson ? `This needs a person's approval: ${decision.reasons.join("; ")}.` : "The rules allow posting this without a person.");
 
         if (decision.path === "escalate") return holdAndFinish("escalated", decision.reasons);
         if (!decision.needsPerson) break;
 
         enter("awaiting_review");
-        step("Waiting for approval", decision.reasons.join("; "), "now");
+        step("Waiting for approval", decision.reasons.join("; "), "now", "Waiting for a reviewer to approve, send back or escalate.");
         await settle();
         const verdict = await review.wait(state.draftVersion, REVIEW_TIMEOUT);
         if (!verdict) return holdAndFinish("expired", [`no review within ${REVIEW_TIMEOUT}`]);
         humanTouches += 1;
         state.reviewer = verdict.reviewer;
         if (verdict.escalate) {
-          step("Escalated by reviewer", verdict.escalate.note);
+          step("Escalated by reviewer", verdict.escalate.note, "done", `${verdict.reviewer ?? "The reviewer"} escalated the case: ${verdict.escalate.note}`);
           return holdAndFinish("escalated", [verdict.escalate.note, `escalated by ${verdict.reviewer ?? "a reviewer"}`]);
         }
         if (verdict.approved) {
-          step("Approved", verdict.reviewer ?? "");
+          step("Approved", verdict.reviewer ?? "", "done", `Approved by ${verdict.reviewer ?? "a reviewer"}.`);
           break;
         }
         state.feedback.push(verdict.feedback ?? "");
-        step("Sent back", verdict.feedback ?? "");
+        step("Sent back", verdict.feedback ?? "", "done", `Sent back for revision: ${verdict.feedback ?? ""}`);
         if (state.feedback.length > MAX_REVISIONS) return holdAndFinish("rejected_by_reviewer", [verdict.feedback ?? "rejected"]);
         revision = { previous: proposed.proposal, feedback: verdict.feedback ?? "" };
       }
@@ -215,7 +215,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
         record(drafted);
         state.message = drafted.message;
         record(await queueMessage({ ...drafted.message, invoiceId: input.invoiceId, runId }));
-        step("Message queued", `to ${drafted.message.to}: ${drafted.message.subject}`);
+        step("Message queued", `to ${drafted.message.to}: ${drafted.message.subject}`, "done", drafted.message.narration ?? `Queued a message to ${drafted.message.to}.`);
       }
 
       // 6–7. Post and confirm.
@@ -233,10 +233,10 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
             invoiceStatus: decision.invoiceStatus,
           }),
         );
-        step("Post resolution", `${proposal.action} · ${(adjustment.amountCents / 100).toFixed(2)}`);
+        step("Post resolution", `${proposal.action} · ${(adjustment.amountCents / 100).toFixed(2)}`, "done", `Posting the ${proposal.action.replace(/_/g, " ")} for $${(Math.abs(adjustment.amountCents) / 100).toFixed(2)} to the ERP.`);
         const confirmed = await confirmInvoice({ invoiceId: input.invoiceId });
         record(confirmed);
-        step("Confirm", `invoice is ${confirmed.status}`);
+        step("Confirm", `invoice is ${confirmed.status}`, "done", `The invoice is now ${confirmed.status.replace(/_/g, " ")}.`);
         if (confirmed.status !== decision.invoiceStatus) {
           return finish("escalated", [`expected the invoice to be ${decision.invoiceStatus}, the ERP shows ${confirmed.status}`]);
         }
@@ -247,7 +247,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
       record(await setHold({ invoiceId: input.invoiceId }));
       enter("waiting");
       state.waitingFor = "a goods receipt";
-      step("Waiting for receipt", `re-checks daily; reminders on days ${wait.reminderDays.join(" and ")}; escalates on day ${wait.escalateDays}`, "now");
+      step("Waiting for receipt", `re-checks daily; reminders on days ${wait.reminderDays.join(" and ")}; escalates on day ${wait.escalateDays}`, "now", `No goods receipt yet. I'll re-check daily and escalate on day ${wait.escalateDays}.`);
       await settle();
       const started = Date.now();
       let received = false;
@@ -259,7 +259,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
         record(again);
         received = !again.match.findings.some((f) => f.code === "NO_RECEIPT");
         if (received) {
-          step("Receipt found", `day ${days}`);
+          step("Receipt found", `day ${days}`, "done", "The goods receipt arrived, so I'm matching the invoice again.");
           break;
         }
         if (days >= wait.escalateDays) return holdAndFinish("escalated", [`no receipt after ${wait.escalateDays} days`]);
@@ -270,7 +270,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
           if (to) {
             record(await queueMessage({ to, subject: `Reminder: ${state.message!.subject}`, body: `Following up on our message about invoice ${state.invoice?.vendorInvoiceNumber ?? input.invoiceId}.\n\n${state.message!.body}`, invoiceId: input.invoiceId, runId }));
           }
-          step(`Reminder ${state.remindersSent}`, to ? `to ${to}` : "still waiting (no one to remind)");
+          step(`Reminder ${state.remindersSent}`, to ? `to ${to}` : "still waiting (no one to remind)", "done", to ? `Still no receipt, so I sent reminder ${state.remindersSent} to ${to}.` : "Still no receipt, and there is no one to remind.");
         }
       }
       state.waitingFor = undefined;

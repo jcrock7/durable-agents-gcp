@@ -73,14 +73,9 @@ resource "google_billing_budget" "monthly" {
     }
   }
 
-  # "We expect to exceed the budget": alerts on forecasted month-end spend.
-  dynamic "threshold_rules" {
-    for_each = var.forecast_alert_thresholds
-    content {
-      threshold_percent = threshold_rules.value
-      spend_basis       = "FORECASTED_SPEND"
-    }
-  }
+  # Rule order matters: the Budgets API returns actual-spend rules first, then forecast ones, each
+  # ascending. Declaring them in that order (and keeping the threshold lists ascending) keeps
+  # `plan` from showing the same rules reordered on every run.
 
   # "We have spent X% already": alerts on actual month-to-date spend.
   dynamic "threshold_rules" {
@@ -88,6 +83,15 @@ resource "google_billing_budget" "monthly" {
     content {
       threshold_percent = threshold_rules.value
       spend_basis       = "CURRENT_SPEND"
+    }
+  }
+
+  # "We expect to exceed the budget": alerts on forecasted month-end spend.
+  dynamic "threshold_rules" {
+    for_each = var.forecast_alert_thresholds
+    content {
+      threshold_percent = threshold_rules.value
+      spend_basis       = "FORECASTED_SPEND"
     }
   }
 

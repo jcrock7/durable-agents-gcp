@@ -10,8 +10,11 @@ metadata:
   name: agents-pg
 spec:
   instances: 1
-  # Official CloudNativePG image; the "standard" variant includes pgvector.
-  imageName: ghcr.io/cloudnative-pg/postgresql:17-standard-bookworm@sha256:c2c7d1fe966bf40178504ca282f2ee17e9512115e10144d5a394af5656cccbc2
+  # Official CloudNativePG image, "system" variant: pgvector plus the Barman Cloud tools that the
+  # GKE overlay's backups call (postgres-gke.yaml). The "standard" variant has pgvector but no
+  # Barman, so backups and WAL archiving fail on it with "barman-cloud-...: executable file not
+  # found". Go back to "standard" only together with the move to the Barman Cloud plugin.
+  imageName: ghcr.io/cloudnative-pg/postgresql:17-system-bookworm@sha256:7bfe2e96f4592b1dcfa8669810f571192b860b99732ba552e8abd34824af5927
 
   storage:
     size: 5Gi

@@ -1,7 +1,7 @@
 # Business case: Agent Fleet Ops
 
 - **Category:** Platform management
-- **Status:** Example application of monitor, diagnose, act (pattern 5); not scheduled to build ([ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md))
+- **Status:** Concept; application of monitor, diagnose, act (pattern 5); not scheduled to build ([ADR-0019](../../../docs/adr/0019-pattern-agent-portfolio.md)). Moved from `financial-services` to the platform engineering group ([ADR-0022](../../../docs/adr/0022-platform-engineering-agents.md))
 - **Users:** Platform engineers, site reliability engineers, model risk management, FinOps
 
 ## Summary
@@ -21,7 +21,7 @@ Once a firm runs more than a handful of AI agents, someone has to watch them: wh
 1. **Daily fleet report:** for each agent, runs, success rate, stuck runs, cost per run against budget, approval wait times and latest eval scores, drawn from Temporal, LiteLLM spend logs, Cloud Monitoring and CI eval results.
 2. **Failure triage:** for each failed or stuck run, reads the Temporal history and traces, classifies the cause (model error, tool failure, budget exceeded, bad input, waiting on a person) and recommends an action.
 3. **Replay with approval:** for transient failures, proposes resetting the workflow to its last good step; **an engineer approves** before the replay runs.
-4. **Drift watch:** runs each agent's eval suite on a schedule and compares results with the last accepted baseline; flags a drop in accuracy or a rise in cost per run.
+4. **Drift watch:** runs each agent's eval suite on a schedule and compares results with the last accepted baseline; flags a drop in accuracy or a rise in cost per run. Quality findings go to the [Agent Improver](../agent-improver/business-case.md), which proposes the fix; Fleet Ops never edits evals, prompts or skills, so the agent that reports the scores can't change them ([ADR-0022](../../../docs/adr/0022-platform-engineering-agents.md)).
 5. **Change proposals as pull requests:** when a fix needs a configuration change (a budget, a scaling setting, a model alias, a time limit), it opens a pull request with the Terraform or config change and its reasoning. It never applies changes itself.
 6. **Monthly model-risk evidence pack:** for each agent, its purpose, models and prompt versions in use, eval results and trends, incidents, overrides by human reviewers and open issues, in a format model risk management can review.
 

@@ -10,6 +10,7 @@ All agents use **synthetic data only** and **assist, don't decide**: anything th
 | `rollover-concierge` | Exception resolution, multi-week | Invoice Exception Resolver | Runs the 401(k)-to-IRA rollover process: forms, tracking, reminders, deadline checks | [business case](rollover-concierge/business-case.md) |
 | `aml-alert-investigator` | Evidence screening at scale | Audit Evidence Collector | Gathers evidence for anti-money-laundering alerts and drafts a cited case narrative for an investigator | [business case](aml-alert-investigator/business-case.md) |
 | `metric-variance-analyst` | Analysis and explanation | FinOps Cost Sentinel | Explains why a metric moved, through governed metric definitions in BigQuery | [business case](metric-variance-analyst/business-case.md) |
-| `agent-fleet-ops` | Monitor, diagnose, act | Incident Commander | Monitors the other agents for cost, failures and accuracy drift; proposes fixes by pull request | [business case](agent-fleet-ops/business-case.md) |
+
+Agent Fleet Ops, originally the fifth agent here, moved to the [platform engineering](../platform-engineering/) group ([ADR-0022](../../docs/adr/0022-platform-engineering-agents.md)).
 
 The business cases describe purpose, benefits to measure, cost, risks and controls. They carry no value model: the industry volumes and labor figures one would need are not something this project can validate.

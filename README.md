@@ -49,8 +49,9 @@ Only the Gateway is public. Stateless pods (API, worker, LiteLLM) run on Spot ca
 | Tools and skills | Tools as in-cluster MCP servers with per-agent allow-lists; skills as versioned instruction packages | [0020](docs/adr/0020-mcp-tools-and-skills.md) |
 | Agent portfolio | Five agents, one per reusable pattern, built on work we can back up | [0019](docs/adr/0019-pattern-agent-portfolio.md) |
 | Agent portal UI | Per-agent case workspace, Mission Control overlay, collapsible agent sidebar; light and dark themes | [0021](docs/adr/0021-agent-portal-ui.md) |
+| Platform engineering agents | Fleet ops, agent improvement and delivery metrics as their own group; the agent that reports eval scores never changes them | [0022](docs/adr/0022-platform-engineering-agents.md) |
 
-All 21 decision records, including superseded ones, are in [`docs/adr/`](docs/adr/).
+All 22 decision records, including superseded ones, are in [`docs/adr/`](docs/adr/).
 
 ## Cost
 

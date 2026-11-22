@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EngineEvent, LiveResponse, PendingActivity } from "../src/api.js";
-import { LIVE_GRAPHS, toolPhrase } from "../src/live/graphs.js";
+import { LIVE_GRAPHS, toolPhrase, withSchedule } from "../src/live/graphs.js";
 import { mergeLive, reduceLive, replayFrames } from "../src/live/reduce.js";
 
 const G = LIVE_GRAPHS["invoice-exception-resolver"]!;
@@ -181,5 +181,15 @@ describe("header worker", () => {
   it("shows the pod name from the worker's <hostname>/<agent> identity", () => {
     const res = { ...running(), workerIdentity: "worker-fd9fcc98f-2h8ls/invoice-exception-resolver" };
     expect(reduceLive(G, res, T0).header.worker).toBe("worker-fd9fcc98f-2h8ls");
+  });
+});
+
+describe("withSchedule", () => {
+  it("puts the agent's configured clocks in the hints, and invents none without them", () => {
+    const g = withSchedule(G, { reviewDays: 7, receipt: { reminderDays: [3, 7], escalateDays: 10 } })!;
+    expect(g.nodes.find((n) => n.gate)?.hint).toBe("Person · up to 7 days");
+    expect(g.branch?.node.hint).toBe("Daily re-check · reminders on days 3 and 7 · escalates on day 10");
+    expect(G.branch?.node.hint).toBe("Daily re-check");
+    expect(JSON.stringify(G)).not.toMatch(/\d+d\b|@ \d/);
   });
 });

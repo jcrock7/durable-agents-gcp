@@ -1,3 +1,4 @@
+import { daysOf, deadlineOf, decisionOf, personReasonsOf, researchOf, thresholdOf, writesOf, type PersonReason } from "./decision.js";
 import { evidenceSummaries } from "./evidence.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -46,6 +47,10 @@ export interface CaseSummary {
   startedAt: string;
   closedAt?: string;
   costUsd: number;
+  /** False when the run recorded no model usage (runs from before cost was kept): show "not recorded", not $0. */
+  costRecorded?: boolean;
+  /** A person approved this against the policy check. */
+  overridden?: boolean;
   detail: string;
   /** Why the case stands where it does, in a sentence; empty when the detail already says it. */
   reason?: string;
@@ -121,8 +126,11 @@ export function summarize(agent: AgentEntry, run: RunInfo, state: AnyState | und
     return {
       ...base,
       reason: stoppedReason,
-      ref: run.workflowId,
-      title: String(state.question ?? state.draft?.summary?.slice(0, 60) ?? run.workflowId),
+      ref: run.workflowId.toUpperCase(),
+      // The question names the case. Runs from before it was recorded say so instead of quoting the draft.
+      title: state.question ? String(state.question) : "Research question not recorded",
+      // A run that drafted but recorded no model call ran before cost was kept (replay rebuilds an empty list).
+      costRecorded: Array.isArray(state.usage) && (state.usage.length > 0 || !state.draft),
       stage: stopped ? temporalStatus.toLowerCase() : String(state.stage),
       status: stopped ? temporalStatus.toLowerCase() : state.stage === "done" ? "done" : null,
       needsPerson: !stopped && state.stage === "awaiting_review",
@@ -144,6 +152,7 @@ export function summarize(agent: AgentEntry, run: RunInfo, state: AnyState | und
     status: stopped ? temporalStatus.toLowerCase() : (state.status ?? null),
     needsPerson: !stopped && state.stage === "awaiting_review",
     costUsd: cost,
+    ...(decisionOf(state)?.againstPolicy ? { overridden: true } : {}),
     detail: last ? `${last.name}${last.detail ? `: ${last.detail}` : ""}` : String(state.stage),
   };
 }
@@ -250,6 +259,18 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     }
   };
 
+  // Which model each gateway alias routes to; read rarely, since it changes only with the gateway config.
+  let modelCache: { at: number; value: Record<string, string> } | undefined;
+  const modelsByAlias = async (): Promise<Record<string, string>> => {
+    if (modelCache && Date.now() - modelCache.at < 300_000) return modelCache.value;
+    try {
+      modelCache = { at: Date.now(), value: (await litellm.models?.()) ?? {} };
+    } catch {
+      modelCache = { at: Date.now(), value: modelCache?.value ?? {} };
+    }
+    return modelCache.value;
+  };
+
   app.get("/healthz", async () => ({ ok: true }));
 
   app.get("/api/me", async (req) => ({
@@ -275,17 +296,20 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     q: z.string().max(100).optional(),
     sort: z.enum(["age", "amount", "cost"]).default("age"),
     dir: z.enum(["asc", "desc"]).default("desc"),
+    /** "1": only cases waiting on a person. */
+    needs: z.enum(["1"]).optional(),
     offset: z.coerce.number().int().min(0).default(0),
     limit: z.coerce.number().int().min(1).max(200).default(50),
   });
   app.get("/api/cases", async (req, reply) => {
     const query = CasesQuery.safeParse(req.query);
     if (!query.success) return reply.code(400).send({ error: "invalid query" });
-    const { agent: agentId, q, sort, dir, offset, limit } = query.data;
+    const { agent: agentId, q, sort, dir, offset, limit, needs } = query.data;
     const agents = AGENTS.filter((a) => a.built && (!agentId || a.id === agentId));
     const all = (await Promise.all(agents.map((a) => casesOf(a, 500).catch(() => [])))).flat().map((c) => c.summary);
     const needle = q?.trim().toLowerCase();
-    const found = needle ? all.filter((c) => [c.ref, c.workflowId, c.title, c.vendorName ?? ""].some((v) => v.toLowerCase().includes(needle))) : all;
+    const searched = needle ? all.filter((c) => [c.ref, c.workflowId, c.title, c.vendorName ?? ""].some((v) => v.toLowerCase().includes(needle))) : all;
+    const found = needs ? searched.filter((c) => c.needsPerson) : searched;
     const key = (c: CaseSummary) => (sort === "amount" ? Math.abs(c.amountCents ?? 0) : sort === "cost" ? c.costUsd : Date.parse(c.startedAt));
     found.sort((x, y) => (dir === "asc" ? key(x) - key(y) : key(y) - key(x)));
     return { total: found.length, offset, cases: found.slice(offset, offset + limit) };
@@ -293,7 +317,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
 
   /** Every agent, with live figures for the built ones. */
   app.get("/api/agents", async () => {
-    const spend = await spendByAlias();
+    const [spend, models] = await Promise.all([spendByAlias(), modelsByAlias()]);
     const dayAgo = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
     return Promise.all(
       AGENTS.map(async (a) => {
@@ -309,6 +333,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
         }
         return {
           ...a,
+          modelTiers: a.models.split(/\s*·\s*/).filter(Boolean).map((alias) => ({ alias, model: models[alias] ?? null })),
           status: !a.built ? "coming_soon" : needsPerson > 0 ? "needs_review" : running > 0 ? "active" : "idle",
           runs24h,
           needsPerson,
@@ -332,8 +357,20 @@ export function buildApp(deps: AppDeps): FastifyInstance {
     const [run] = await temporal.listRuns(`WorkflowId = '${workflowId}'`, 1);
     if (!run) return reply.code(404).send({ error: "no such case" });
     const [state, ended] = await Promise.all([stateOf(agent, run), endingOf(run)]);
-    const facts = factsOf(state);
-    return { agentId: agent.id, summary: summarize(agent, run, state, ended), state: state ?? null, facts: facts ?? null, evidence: evidenceSummaries(state, facts?.dueDate) };
+    const facts = agent.id === "invoice-exception-resolver" ? factsOf(state) : undefined;
+    return {
+      agentId: agent.id,
+      summary: summarize(agent, run, state, ended),
+      state: state ?? null,
+      facts: facts ?? null,
+      evidence: evidenceSummaries(state, facts?.dueDate),
+      decision: decisionOf(state) ?? null,
+      writes: writesOf(state),
+      threshold: thresholdOf(state) ?? null,
+      personReasons: personReasonsOf(state),
+      deadline: deadlineOf(state, agent.schedule?.reviewDays ?? daysOf(state?.reviewTimeout)) ?? null,
+      research: agent.id === "research-summarize" ? (researchOf(state) ?? null) : undefined,
+    };
   });
 
   // Live Run view: polled every second while a case runs, so it skips the state cache.
@@ -376,7 +413,14 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   app.post<{ Params: { workflowId: string } }>("/api/cases/:workflowId/review", async (req, reply) => {
     const { workflowId } = req.params;
     const body = ReviewBody.safeParse(req.body);
-    if (!ID.test(workflowId) || !agentForWorkflow(workflowId)?.built || !body.success) return reply.code(400).send({ error: "invalid review" });
+    const agent = ID.test(workflowId) ? agentForWorkflow(workflowId) : undefined;
+    if (!agent?.built || !body.success) return reply.code(400).send({ error: "invalid review" });
+    // Approving against the policy needs a reason on the record. The workflow refuses it too; checking here answers first.
+    if ("approved" in body.data && body.data.approved && !body.data.feedback?.trim() && agent.stateQuery) {
+      const [run] = await temporal.listRuns(`WorkflowId = '${workflowId}'`, 1);
+      const state = run ? await stateOf(agent, run) : undefined;
+      if (state?.route?.policyFit && state.route.policyFit.fits === false) return reply.code(400).send({ error: "a reason is required when approving against the policy" });
+    }
     try {
       // An escalation is neither an approval nor a send-back; the workflow reads the note.
       const decision = "escalate" in body.data ? { approved: false, escalate: body.data.escalate } : body.data;
@@ -432,6 +476,8 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       for (const t of state.toolCalls ?? []) if (t.outcome === "refused") events.push({ kind: "Allow-list", agentId: agent.id, workflowId: summary.workflowId, text: `${t.ref} refused (${t.caller})`, at: t.at });
       const over = state.route?.reasons?.find((r: string) => r.includes("approval line"));
       if (over && summary.needsPerson) events.push({ kind: "Threshold", agentId: agent.id, workflowId: summary.workflowId, text: over, at });
+      const d = decisionOf(state);
+      if (d?.againstPolicy) events.push({ kind: "Override", agentId: agent.id, workflowId: summary.workflowId, text: `approved against the policy by ${d.reviewer ?? "a reviewer"}${d.approvalReason ? `, giving the reason “${d.approvalReason}”` : ""}`, at: d.approvedAt ?? at });
     }
     for (const a of built) {
       const k = a.keyAlias ? spend.get(a.keyAlias) : undefined;
@@ -453,13 +499,26 @@ export function buildApp(deps: AppDeps): FastifyInstance {
       .filter((n) => Number.isFinite(n))
       .sort((x, y) => x - y);
     const started = inv.filter((c) => c.summary.costUsd > 0);
+    // Rates over a handful of cases mislead: below this many closed cases the overview shows counts only.
+    const RATE_FLOOR = 10;
     const costPerCase = started.length ? started.reduce((s, c) => s + c.summary.costUsd, 0) / started.length : null;
+    // Closed by the rules alone: no rule sent it to a person, nobody decided it, and it did not end with a specialist.
+    const byRuleAlone = (s: AnyState) => !s.reviewer && !s.route?.needsPerson && !["blocked", "escalated", "expired", "rejected_by_reviewer"].includes(String(s.status ?? ""));
+    const closedByRule = closed.filter((c) => byRuleAlone(c.state!)).length;
+    // Why the other closed cases needed a person: one count per reason (a case can have several).
+    const why = new Map<string, PersonReason & { cases: number }>();
+    for (const c of closed.filter((x) => !byRuleAlone(x.state!))) {
+      for (const { rule: _rule, ...r } of personReasonsOf(c.state)) why.set(r.label, { ...r, cases: (why.get(r.label)?.cases ?? 0) + 1 });
+    }
     const value = {
       cases: inv.length,
       awaitingDecisionCents: inv.filter((c) => c.summary.needsPerson).reduce((s, c) => s + Math.abs(c.summary.amountCents ?? 0), 0),
       invoiceValueProcessedCents: closed.reduce((s, c) => s + (c.state!.match?.totals?.invoiceCents ?? 0), 0),
       closed: closed.length,
-      closedWithoutPerson: closed.filter((c) => !c.state!.reviewer).length,
+      closedWithoutPerson: closedByRule,
+      rateFloor: RATE_FLOOR,
+      closedWithoutPersonPct: closed.length >= RATE_FLOOR ? Math.round((100 * closedByRule) / closed.length) : null,
+      whyPerson: [...why.values()].sort((x, y) => y.cases - x.cases),
       medianSecondsToProposal: toProposal.length ? toProposal[Math.floor((toProposal.length - 1) / 2)]! : null,
       costPerCaseUsd: costPerCase,
       manualCostPerCaseUsd: deps.manualCostPerCaseUsd ?? null,

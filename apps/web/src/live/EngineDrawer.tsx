@@ -3,6 +3,7 @@ import { getJson, type EngineEvent } from "../api.js";
 import { allNodes, nodeForActivity, type LiveGraph } from "./graphs.js";
 import type { LiveView } from "./reduce.js";
 import { offset } from "./format.js";
+import { useTabs } from "../tabs.js";
 
 type Tab = "grouped" | "raw" | "json";
 
@@ -14,7 +15,11 @@ const attrsText = (attrs: Record<string, string | number>) =>
 function Row({ e, start, hl, selected, onPick }: { e: EngineEvent; start: string; hl: boolean; selected: boolean; onPick: () => void }) {
   return (
     <tr className={`${e.kind ? `k-${e.kind}` : ""}${hl ? " hl" : ""}${selected ? " sel" : ""}`} onClick={onPick} data-event={e.id}>
-      <td>{e.id}</td>
+      <td>
+        <button type="button" className="ev-pick" aria-pressed={selected} aria-label={`Event ${e.id}, ${e.type}: show its JSON`} onClick={(ev) => (ev.stopPropagation(), onPick())}>
+          {e.id}
+        </button>
+      </td>
       <td>{offset(e.at, start)}</td>
       <td className="ty">
                 {e.type}
@@ -54,6 +59,8 @@ export function EngineDrawer({
   const retries = Object.values(view.nodes).reduce((s, n) => s + n.retries, 0);
   const failovers = Object.values(view.nodes).reduce((s, n) => s + n.failovers, 0);
   const lastEvent = events.at(-1);
+  const TABS: Tab[] = ["grouped", "raw", "json"];
+  const t = useTabs("engine", TABS, tab, setTab);
 
   useEffect(() => {
     if (!open || !focus) return;
@@ -74,7 +81,7 @@ export function EngineDrawer({
         <button type="button" className="live-dh" onClick={() => onOpen(true)} aria-expanded="false">
           <b>Engine History</b>
           <span className="muted">
-            {events.length} events{lastEvent ? ` · last: ${lastEvent.type}${lastEvent.attrs.attempt ? ` attempt=${lastEvent.attrs.attempt}` : ""} · ${offset(lastEvent.at, view.startTime)}` : ""}
+            {events.length} engine events{lastEvent ? ` · latest at ${offset(lastEvent.at, view.startTime)}` : ""} · the record Temporal keeps, step by step
           </span>
           {retries > 0 && <span className="live-badge retry">{retries} {retries === 1 ? "Retry" : "Retries"}</span>}
           {failovers > 0 && <span className="live-badge failover">{failovers} {failovers === 1 ? "Failover" : "Failovers"}</span>}
@@ -91,7 +98,7 @@ export function EngineDrawer({
     groups.set(key, [...(groups.get(key) ?? []), e]);
   }
   const order = [...allNodes(graph).map((n) => n.id).filter((id) => groups.has(id)).reverse(), ...(groups.has("engine") ? ["engine"] : [])];
-  const label = (id: string) => (id === "engine" ? "Workflow tasks and timers" : (allNodes(graph).find((n) => n.id === id)?.label ?? id));
+  const label = (id: string) => (id === "engine" ? "Workflow Tasks and Timers" : (allNodes(graph).find((n) => n.id === id)?.label ?? id));
   const pick = (id: number) => setPicked(id);
   const table = (rows: EngineEvent[]) => (
     <table className="mono">
@@ -118,10 +125,10 @@ export function EngineDrawer({
         <span className="muted">
           Temporal history · {events.length} events{view.running ? " · live" : ""}
         </span>
-        <span className="live-tabs" role="tablist">
-          {(["grouped", "raw", "json"] as Tab[]).map((t) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-              {t === "grouped" ? "Grouped" : t === "raw" ? "Raw Events" : "JSON"}
+        <span className="live-tabs" {...t.list} aria-label="Engine history view">
+          {TABS.map((id) => (
+            <button key={id} type="button" {...t.tab(id)} className={tab === id ? "on" : ""}>
+              {id === "grouped" ? "Grouped" : id === "raw" ? "Raw Events" : "JSON"}
             </button>
           ))}
         </span>
@@ -140,7 +147,7 @@ export function EngineDrawer({
           ▾ Collapse
         </button>
       </div>
-      <div className="live-db" ref={body}>
+      <div className="live-db" ref={body} {...t.panel}>
         {view.pending.length > 0 && (
           <div className="live-pending">
             {view.pending.map((p) => (
@@ -166,7 +173,7 @@ export function EngineDrawer({
         {tab === "raw" && table(events)}
         {tab === "json" &&
           (picked === undefined ? (
-            <p className="muted live-empty">Pick an event in Grouped or Raw to see its JSON.</p>
+            <p className="muted live-empty">Pick an event number in Grouped or Raw Events to see its JSON.</p>
           ) : (
             <pre className="mono live-json">{raw?.id === picked ? raw.body : "Loading…"}</pre>
           ))}

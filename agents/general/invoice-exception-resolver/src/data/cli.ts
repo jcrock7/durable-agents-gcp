@@ -1,5 +1,6 @@
 // Write the synthetic ERP to a folder:
 //   seed.sql      schema, grants and data for Postgres (scripts/local/erp-load.sh loads it)
+//   demo-pool.sql the demo-pool invoices alone, added to an ERP loaded before the pool existed
 //   docs/         the document store: invoices/*.pdf and emails/*.txt (built into the docs MCP server image)
 //   labels.json   the expected answer for each seeded exception, for evals. Never loaded into the ERP.
 //
@@ -8,7 +9,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { documents } from "./documents.js";
 import { generateErp } from "./generate.js";
-import { seedSql } from "./sql.js";
+import { demoPoolSql, seedSql } from "./sql.js";
 
 const outDir = resolve(process.argv[2] ?? "data/out");
 const seed = Number(process.argv[3] ?? 20931);
@@ -17,6 +18,7 @@ const data = generateErp(seed);
 await rm(outDir, { recursive: true, force: true });
 await mkdir(outDir, { recursive: true });
 await writeFile(join(outDir, "seed.sql"), seedSql(data));
+await writeFile(join(outDir, "demo-pool.sql"), demoPoolSql(data));
 await writeFile(join(outDir, "labels.json"), `${JSON.stringify(data.labels, null, 2)}\n`);
 for (const [path, content] of documents(data)) {
   const file = join(outDir, "docs", path);

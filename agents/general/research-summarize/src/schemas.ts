@@ -27,5 +27,6 @@ export const DraftSchema = z.object({
   summary: z.string().describe("Markdown answer of 150-300 words citing sources inline as [n]"),
   keyPoints: z.array(z.string()).min(1).max(6).describe("The main findings, one sentence each, with [n] citations"),
   citedSources: z.array(z.number().int()).describe("Numbers of the sources cited"),
+  unrelatedSources: z.array(z.number().int()).default([]).describe("Numbers of the sources that do not bear on the question"),
 });
 export type Draft = z.infer<typeof DraftSchema>;

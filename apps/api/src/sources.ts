@@ -68,6 +68,8 @@ export interface KeySpend {
 export interface LiteLLMSource {
   keys(): Promise<KeySpend[]>;
   healthy(): Promise<boolean>;
+  /** Which model each gateway alias ("fast", "smart") routes to. Optional: absent sources show the aliases alone. */
+  models?(): Promise<Record<string, string>>;
 }
 
 export interface DeploymentStatus {
@@ -237,6 +239,13 @@ export function litellmSource(baseUrl: string, viewerKey: string | undefined): L
       return (body.keys ?? [])
         .filter((k) => k.key_alias)
         .map((k) => ({ alias: k.key_alias!, spend: k.spend ?? 0, maxBudget: k.max_budget ?? null, resetsAt: k.budget_reset_at ?? null }));
+    },
+    async models() {
+      if (!viewerKey) return {};
+      const body = (await (await call("/model/info")).json()) as { data?: Array<{ model_name?: string; litellm_params?: { model?: string } }> };
+      const out: Record<string, string> = {};
+      for (const m of body.data ?? []) if (m.model_name && m.litellm_params?.model && !out[m.model_name]) out[m.model_name] = m.litellm_params.model;
+      return out;
     },
     async healthy() {
       try {

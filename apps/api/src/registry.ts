@@ -1,5 +1,6 @@
 // The agents the portal shows (ADR-0021). Built agents have a task queue and workflow types;
 // the rest are listed as "Coming soon".
+import { agentConfig as invoiceConfig } from "@agents/invoice-exception-resolver/config";
 
 export interface AgentEntry {
   id: string;
@@ -21,7 +22,18 @@ export interface AgentEntry {
   tools: string[];
   models: string;
   /** Pass rate from the agent's latest eval run, with where it came from. */
-  evals?: { rate: string; source: string };
+  evals?: { rate: string; source: string; passed?: number; total?: number };
+  /** The agent's configured clocks, read from its config so the portal never restates them. */
+  schedule?: {
+    /** Days a proposal waits for a reviewer before the case expires to a specialist. */
+    reviewDays: number;
+    /** Waiting for a goods receipt: reminder days and the day the case escalates. */
+    receipt?: { reminderDays: number[]; escalateDays: number };
+  };
+  /** The fixed checks that can stop this agent, each enforced in code or at the gateway. */
+  guardrails?: string[];
+  /** The approval rules, for explaining why a person is needed. */
+  approval?: { amountCents: number; alwaysFor: string[] };
 }
 
 export const AGENTS: AgentEntry[] = [
@@ -38,9 +50,16 @@ export const AGENTS: AgentEntry[] = [
     casePrefix: "inv-",
     stateQuery: "caseState",
     keyAlias: "agent-invoice-exception-resolver",
+    guardrails: [
+      "Invoice text is screened for hidden instructions before the proposal; a hit stops the run",
+      "Tools come from an allow-list; ERP writes are made only by the workflow, never by the model",
+      "Model calls go through the gateway, which enforces the agent's budget and checks for prompt injection",
+    ],
     tools: ["erp-read", "erp-write", "docs", "match-engine"],
     models: "fast · smart",
-    evals: { rate: "97.9%", source: "agents/general/invoice-exception-resolver/evals/RESULTS.md" },
+    evals: { rate: "97.9%", passed: 92, total: 94, source: "agents/general/invoice-exception-resolver/evals/RESULTS.md" },
+    schedule: { reviewDays: invoiceConfig.review.days, receipt: { reminderDays: [...invoiceConfig.wait.reminderDays], escalateDays: invoiceConfig.wait.escalateDays } },
+    approval: { amountCents: invoiceConfig.approval.amountCents, alwaysFor: [...invoiceConfig.approval.alwaysFor] },
   },
   {
     id: "cve-remediator",
@@ -99,6 +118,10 @@ export const AGENTS: AgentEntry[] = [
     casePrefix: "research-",
     stateQuery: "progress",
     keyAlias: "agent-research-summarize",
+    guardrails: [
+      "Fetches only from en.wikipedia.org",
+      "Model calls go through the gateway, which enforces the agent's budget and checks for prompt injection",
+    ],
     tools: ["wikipedia (HTTP allow-list)"],
     models: "fast · smart",
   },

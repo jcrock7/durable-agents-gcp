@@ -1,49 +1,345 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-21T00:00:00Z",
+  "generatedAt": "2026-11-22T01:59:11.088Z",
   "title": "Design System: Agent Operations",
   "extensions": {
     "colorMeta": {
-      "action-blue": { "role": "primary", "displayName": "Action Blue", "canonical": "#0B5CAD", "tonalRamp": ["#04213F", "#06335F", "#08467F", "#0B5CAD", "#3F84CC", "#86B8F4", "#B9D0EE", "#E8F0FA"] },
-      "action-blue-hover": { "role": "primary", "displayName": "Action Blue, Hover", "canonical": "#08467F" },
-      "action-blue-wash": { "role": "primary", "displayName": "Action Blue Wash", "canonical": "#E8F0FA" },
-      "decision-amber": { "role": "secondary", "displayName": "Decision Amber", "canonical": "#E39A1B", "tonalRamp": ["#1B1200", "#4A2A00", "#8F4C00", "#B87410", "#E39A1B", "#F2B45A", "#EDCB97", "#FDF4E7"] },
-      "decision-amber-text": { "role": "secondary", "displayName": "Decision Amber Text", "canonical": "#8F4C00" },
-      "decision-amber-wash": { "role": "secondary", "displayName": "Decision Amber Wash", "canonical": "#FDF4E7" },
-      "decision-amber-line": { "role": "secondary", "displayName": "Decision Amber Line", "canonical": "#EDCB97" },
-      "resolved-green": { "role": "tertiary", "displayName": "Resolved Green", "canonical": "#1E7A34", "tonalRamp": ["#0A2A13", "#12451F", "#1E7A34", "#2F9A4A", "#6DD58C", "#9BDFAE", "#B7DFC1", "#EEF7F0"] },
-      "stop-red": { "role": "tertiary", "displayName": "Stop Red", "canonical": "#A8281F", "tonalRamp": ["#331613", "#5E1711", "#851F18", "#A8281F", "#D0554B", "#F0958C", "#F6C4BE", "#FBE9E7"] },
-      "bar-slate": { "role": "tertiary", "displayName": "Bar Slate", "canonical": "#8FA3BF", "tonalRamp": ["#1E2633", "#3A4759", "#5D6F8A", "#7689A6", "#8FA3BF", "#B2C0D4", "#D3DBE6", "#EEF1F6"] },
-      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#161B22", "tonalRamp": ["#0E1116", "#161B22", "#2C333C", "#454C55", "#5A626C", "#9AA4AF", "#C1C7CD", "#DDE1E6"] },
-      "desk-grey": { "role": "neutral", "displayName": "Desk Grey", "canonical": "#F2F4F7" },
-      "paper": { "role": "neutral", "displayName": "Paper", "canonical": "#FFFFFF" },
-      "paper-shade": { "role": "neutral", "displayName": "Paper Shade", "canonical": "#F7F8FA" },
-      "rule": { "role": "neutral", "displayName": "Rule", "canonical": "#DDE1E6" },
-      "rule-strong": { "role": "neutral", "displayName": "Rule Strong", "canonical": "#C1C7CD" },
-      "rail": { "role": "neutral", "displayName": "Rail", "canonical": "#161B22" }
+      "action-blue": {
+        "role": "primary",
+        "displayName": "Action Blue",
+        "canonical": "#0B5CAD",
+        "tonalRamp": [
+          "#04213F",
+          "#06335F",
+          "#08467F",
+          "#0B5CAD",
+          "#3F84CC",
+          "#86B8F4",
+          "#B9D0EE",
+          "#E8F0FA"
+        ]
+      },
+      "action-blue-hover": {
+        "role": "primary",
+        "displayName": "Action Blue, Hover",
+        "canonical": "#08467F"
+      },
+      "action-blue-wash": {
+        "role": "primary",
+        "displayName": "Action Blue Wash",
+        "canonical": "#E8F0FA"
+      },
+      "decision-amber": {
+        "role": "secondary",
+        "displayName": "Decision Amber",
+        "canonical": "#E39A1B",
+        "tonalRamp": [
+          "#1B1200",
+          "#4A2A00",
+          "#8F4C00",
+          "#B87410",
+          "#E39A1B",
+          "#F2B45A",
+          "#EDCB97",
+          "#FDF4E7"
+        ]
+      },
+      "decision-amber-text": {
+        "role": "secondary",
+        "displayName": "Decision Amber Text",
+        "canonical": "#8F4C00"
+      },
+      "decision-amber-wash": {
+        "role": "secondary",
+        "displayName": "Decision Amber Wash",
+        "canonical": "#FDF4E7"
+      },
+      "decision-amber-line": {
+        "role": "secondary",
+        "displayName": "Decision Amber Line",
+        "canonical": "#EDCB97"
+      },
+      "resolved-green": {
+        "role": "tertiary",
+        "displayName": "Resolved Green",
+        "canonical": "#1E7A34",
+        "tonalRamp": [
+          "#0A2A13",
+          "#12451F",
+          "#1E7A34",
+          "#2F9A4A",
+          "#6DD58C",
+          "#9BDFAE",
+          "#B7DFC1",
+          "#EEF7F0"
+        ]
+      },
+      "stop-red": {
+        "role": "tertiary",
+        "displayName": "Stop Red",
+        "canonical": "#A8281F",
+        "tonalRamp": [
+          "#331613",
+          "#5E1711",
+          "#851F18",
+          "#A8281F",
+          "#D0554B",
+          "#F0958C",
+          "#F6C4BE",
+          "#FBE9E7"
+        ]
+      },
+      "bar-slate": {
+        "role": "tertiary",
+        "displayName": "Bar Slate",
+        "canonical": "#8FA3BF",
+        "tonalRamp": [
+          "#1E2633",
+          "#3A4759",
+          "#5D6F8A",
+          "#7689A6",
+          "#8FA3BF",
+          "#B2C0D4",
+          "#D3DBE6",
+          "#EEF1F6"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#161B22",
+        "tonalRamp": [
+          "#0E1116",
+          "#161B22",
+          "#2C333C",
+          "#454C55",
+          "#5A626C",
+          "#9AA4AF",
+          "#C1C7CD",
+          "#DDE1E6"
+        ]
+      },
+      "desk-grey": {
+        "role": "neutral",
+        "displayName": "Desk Grey",
+        "canonical": "#F2F4F7"
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#FFFFFF"
+      },
+      "paper-shade": {
+        "role": "neutral",
+        "displayName": "Paper Shade",
+        "canonical": "#F7F8FA"
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "#DDE1E6"
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Rule Strong",
+        "canonical": "#C1C7CD"
+      },
+      "rail": {
+        "role": "neutral",
+        "displayName": "Rail",
+        "canonical": "#161B22"
+      },
+      "rail-ink": {
+        "role": "neutral",
+        "displayName": "Rail Ink",
+        "canonical": "#FFFFFF",
+        "tonalRamp": [
+          "#2C333C",
+          "#454C55",
+          "#6B737D",
+          "#9CA3AF",
+          "#C1C7CD",
+          "#DDE1E6",
+          "#F2F4F7",
+          "#FFFFFF"
+        ]
+      },
+      "rail-control": {
+        "role": "neutral",
+        "displayName": "Rail Control Line",
+        "canonical": "#39414B",
+        "tonalRamp": [
+          "#161B22",
+          "#1F252D",
+          "#2C333C",
+          "#39414B",
+          "#4B5563",
+          "#6B737D",
+          "#9CA3AF",
+          "#C9D0D8"
+        ]
+      },
+      "rail-ok": {
+        "role": "tertiary",
+        "displayName": "Rail Resolved Green",
+        "canonical": "#6DD58C",
+        "tonalRamp": [
+          "#12251A",
+          "#1E4A2C",
+          "#25553A",
+          "#2F7A47",
+          "#3FA35E",
+          "#6DD58C",
+          "#A6E8B9",
+          "#DDF6E4"
+        ]
+      },
+      "rail-idle": {
+        "role": "neutral",
+        "displayName": "Rail Idle Grey",
+        "canonical": "#9CA3AF",
+        "tonalRamp": [
+          "#1F252D",
+          "#3A424D",
+          "#4B5563",
+          "#6B737D",
+          "#9CA3AF",
+          "#C1C7CD",
+          "#DDE1E6",
+          "#F2F4F6"
+        ]
+      },
+      "rail-off": {
+        "role": "neutral",
+        "displayName": "Rail Roadmap Grey",
+        "canonical": "#4B5563",
+        "tonalRamp": [
+          "#161B22",
+          "#2C333C",
+          "#39414B",
+          "#4B5563",
+          "#6B737D",
+          "#9CA3AF",
+          "#C1C7CD",
+          "#E3E7EB"
+        ]
+      },
+      "rail-down": {
+        "role": "tertiary",
+        "displayName": "Rail Stop Red",
+        "canonical": "#F0958C",
+        "tonalRamp": [
+          "#331613",
+          "#5C2520",
+          "#8A3329",
+          "#A8281F",
+          "#D0574C",
+          "#F0958C",
+          "#F6C3BD",
+          "#FBE9E7"
+        ]
+      }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "The headline amount on a case; KPI figures at 30px, agent header figures at 24px." },
-      "headline": { "displayName": "Headline", "purpose": "The question a case page asks, and the agent name." },
-      "title": { "displayName": "Title", "purpose": "Decision band subject, dialog titles, drill-down headings." },
-      "body": { "displayName": "Body", "purpose": "Default text and tables." },
-      "body-reading": { "displayName": "Body Reading", "purpose": "The agent's recommendation and other prose read in full, max 76ch." },
-      "label": { "displayName": "Label", "purpose": "Uppercase section labels, table headers and definition terms." },
-      "mono": { "displayName": "Mono", "purpose": "Citation tags and identifiers or raw output in the audit trail only." }
+      "display": {
+        "displayName": "Display",
+        "purpose": "The headline amount on a case; KPI figures at 30px, agent header figures at 24px."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "The question a case page asks, and the agent name."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Decision band subject, dialog titles, drill-down headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default text and tables."
+      },
+      "body-reading": {
+        "displayName": "Body Reading",
+        "purpose": "The agent's recommendation and other prose read in full, max 76ch."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase section labels, table headers and definition terms."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Citation tags and identifiers or raw output in the audit trail only."
+      },
+      "figure": {
+        "displayName": "Figure",
+        "purpose": "KPI tile figures (30px)."
+      },
+      "figure-sm": {
+        "displayName": "Figure Small",
+        "purpose": "Agent header figures (24px)."
+      },
+      "agent-name": {
+        "displayName": "Agent Name",
+        "purpose": "The agent page heading (26px)."
+      },
+      "dialog-title": {
+        "displayName": "Dialog Title",
+        "purpose": "The decision dialog's heading (20px)."
+      },
+      "supporting": {
+        "displayName": "Supporting",
+        "purpose": "Three steps only: 14.5px bar and dialog sentences, 14px sub-lines and legends, 13.5px meta and counts."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "13px audit rows and footer; 12px engine history and small tags."
+      },
+      "rail-badge": {
+        "displayName": "Rail Badge",
+        "purpose": "Monograms and collapsed-rail counts (11px); group labels 11.5px."
+      }
     },
     "shadows": [
-      { "name": "floating-menu", "value": "0 12px 32px rgba(0, 0, 0, 0.18)", "purpose": "The user menu." },
-      { "name": "dialog", "value": "0 24px 64px rgba(0, 0, 0, 0.3)", "purpose": "The decision dialog, over a rgba(10, 16, 24, 0.55) backdrop." },
-      { "name": "docked-drawer", "value": "0 -6px 20px rgba(0, 0, 0, 0.18)", "purpose": "The live run view's event drawer." }
+      {
+        "name": "floating-menu",
+        "value": "0 12px 32px rgba(0, 0, 0, 0.18)",
+        "purpose": "The user menu."
+      },
+      {
+        "name": "dialog",
+        "value": "0 24px 64px rgba(0, 0, 0, 0.3)",
+        "purpose": "The decision dialog, over a rgba(10, 16, 24, 0.55) backdrop."
+      },
+      {
+        "name": "docked-drawer",
+        "value": "0 -6px 20px rgba(0, 0, 0, 0.18)",
+        "purpose": "The live run view's event drawer."
+      }
     ],
     "motion": [
-      { "name": "modal-in", "value": "0.16s ease-out, opacity 0 to 1 with an 8px rise", "purpose": "Decision dialog entry; skipped under prefers-reduced-motion." },
-      { "name": "live-pulse", "value": "1.2s ease-in-out infinite, opacity to 0.3 at 50%", "purpose": "Marks a run that is live; skipped under prefers-reduced-motion." }
+      {
+        "name": "modal-in",
+        "value": "0.16s ease-out, opacity 0 to 1 with an 8px rise",
+        "purpose": "Decision dialog entry; skipped under prefers-reduced-motion."
+      },
+      {
+        "name": "live-pulse",
+        "value": "1.2s ease-in-out infinite, opacity to 0.3 at 50%",
+        "purpose": "Marks a run that is live; skipped under prefers-reduced-motion."
+      }
     ],
     "breakpoints": [
-      { "name": "rail-collapse", "value": "900px" },
-      { "name": "phone", "value": "720px" },
-      { "name": "sheet", "value": "640px" }
+      {
+        "name": "rail-collapse",
+        "value": "900px"
+      },
+      {
+        "name": "phone",
+        "value": "720px"
+      },
+      {
+        "name": "sheet",
+        "value": "640px"
+      }
     ]
   },
   "components": [
@@ -117,6 +413,34 @@
       "description": "The waiting decision at the top of the overview, with one Review button.",
       "html": "<div class=\"ds-need\"><div class=\"ds-need-q\"><span class=\"ds-need-lab\">1 decision waiting</span><b>$1,023.40 Price Variance on INV-20267</b><span>Invoice Resolver · Saltmarsh Lab Supply</span></div><button class=\"ds-need-btn\">Review</button></div>",
       "css": ".ds-need { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; background: #FDF4E7; border: 1px solid #EDCB97; border-radius: 8px; padding: 18px 22px; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #161B22; } .ds-need-q { flex: 1 1 320px; display: flex; flex-direction: column; gap: 2px; } .ds-need-lab { font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #8F4C00; } .ds-need-q b { font-size: 18px; font-weight: 600; } .ds-need-q span:last-child { color: #454C55; } .ds-need-btn { min-height: 44px; padding: 0 18px; border-radius: 6px; font: 600 15px 'IBM Plex Sans', system-ui, sans-serif; border: 1px solid #0B5CAD; background: #0B5CAD; color: #FFFFFF; cursor: pointer; } .ds-need-btn:focus-visible { outline: 2px solid #0B5CAD; outline-offset: 2px; }"
+    },
+    {
+      "name": "Rule List",
+      "kind": "custom",
+      "description": "Why a case is with a person: markers differ by shape as well as colour (square needs a person, diamond conflict, tick passed, outline note).",
+      "html": "<ul class=\"ds-rules\"><li><span>Accept variance always needs a person.</span></li><li class=\"crit\"><span>Accept variance does not fit the policy.</span></li><li class=\"pass\"><span>Invoice text was screened for hidden instructions. Passed.</span></li><li class=\"note\"><span>Invoice put on hold. Approved by ap.lead.</span></li></ul>",
+      "css": ".ds-rules { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; font: 400 15px/1.45 'IBM Plex Sans', system-ui, sans-serif; color: var(--text, #161B22); } .ds-rules li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; } .ds-rules li::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: #E39A1B; margin-top: 7px; } .ds-rules li.crit::before { background: #A8281F; transform: rotate(45deg) scale(.9); border-radius: 1px; } .ds-rules li.pass::before { width: 10px; height: 6px; margin-top: 6px; background: none; border: solid #1E7A34; border-width: 0 0 2px 2px; border-radius: 0; transform: rotate(-45deg); } .ds-rules li.note::before { background: none; border: 2px solid #0B5CAD; }"
+    },
+    {
+      "name": "Decision Dialog",
+      "kind": "custom",
+      "description": "Every decision opens this first: what happens, the facts written, a labelled reason, Cancel and one primary confirm.",
+      "html": "<div class=\"ds-dialog\"><h2>Approve and Post to ERP</h2><p><b>What happens:</b> “Accept Variance” for $1,284.00 is written to the ERP and the exception on case INV-20931 is cleared.</p><label>Note for the Record (Optional)</label><textarea rows=\"3\"></textarea><footer><span>Recorded as ap.lead · Ctrl+Enter to confirm</span><button class=\"ds-d-btn\">Cancel</button><button class=\"ds-d-btn primary\">Approve and Post to ERP</button></footer></div>",
+      "css": ".ds-dialog { width: min(640px, 100%); padding: 22px 24px; border: 1px solid #C1C7CD; border-radius: 10px; background: #FFFFFF; box-shadow: 0 24px 64px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: 12px; font: 400 15px/1.5 'IBM Plex Sans', system-ui, sans-serif; color: #161B22; } .ds-dialog h2 { margin: 0; font-size: 20px; font-weight: 600; } .ds-dialog p { margin: 0; font-size: 14.5px; color: #454C55; } .ds-dialog label { font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #5A626C; } .ds-dialog textarea { min-height: 88px; padding: 12px 14px; font: inherit; font-size: 16px; border: 1px solid #C1C7CD; border-radius: 6px; } .ds-dialog textarea:focus-visible { outline: 2px solid #0B5CAD; outline-offset: 1px; } .ds-dialog footer { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: flex-end; } .ds-dialog footer span { margin-right: auto; font-size: 13.5px; color: #5A626C; } .ds-d-btn { min-height: 44px; padding: 0 18px; border-radius: 6px; border: 1px solid #C1C7CD; background: #FFFFFF; color: #161B22; font: 600 15px 'IBM Plex Sans', system-ui, sans-serif; cursor: pointer; } .ds-d-btn.primary { background: #0B5CAD; border-color: #0B5CAD; color: #FFFFFF; } .ds-d-btn:hover { background: #EEF1F4; } .ds-d-btn.primary:hover { background: #08467F; } .ds-d-btn:focus-visible { outline: 2px solid #0B5CAD; outline-offset: 2px; }"
+    },
+    {
+      "name": "Ledger Figures",
+      "kind": "custom",
+      "description": "Key figures as one ruled row: a single bordered strip divided by Rule lines, label, 30px figure and one supporting line per cell.",
+      "html": "<div class=\"ds-ledger\"><div><span>Awaiting Decision</span><b>$1,284.00</b><i>Value waiting on a person</i></div><div><span>Closed Without a Person</span><b>0 of 3</b><i>Closed cases; a rate from 10</i></div><div><span>Cost per Case</span><b>$0.0103</b><i>Model spend per case worked</i></div></div>",
+      "css": ".ds-ledger { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); border: 1px solid #DDE1E6; border-radius: 8px; background: #FFFFFF; overflow: hidden; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #161B22; } .ds-ledger > div { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-left: 1px solid #DDE1E6; margin-left: -1px; } .ds-ledger span { font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #5A626C; } .ds-ledger b { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; } .ds-ledger i { font-style: normal; font-size: 14px; color: #454C55; }"
+    },
+    {
+      "name": "Why a Person List",
+      "kind": "custom",
+      "description": "Why closed cases needed a person: group label (Policy, Risk, Evidence), the reason in business words, and a case count, as ruled rows.",
+      "html": "<ul class=\"ds-why\"><li><span>Policy</span><span>Over the $1,000 approval line</span><b>3 cases</b></li><li><span>Policy</span><span>Accepting a price variance always needs a person</span><b>3 cases</b></li><li class=\"risk\"><span>Risk</span><span>Possible fraud</span><b>1 case</b></li></ul>",
+      "css": ".ds-why { list-style: none; margin: 0; padding: 0; font-family: 'IBM Plex Sans', system-ui, sans-serif; color: #161B22; } .ds-why li { display: grid; grid-template-columns: 7em minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid #DDE1E6; font-size: 15px; } .ds-why li > span:first-child { font-size: 12.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #5A626C; } .ds-why li.risk > span:first-child { color: #A8281F; } .ds-why b { font-weight: 600; white-space: nowrap; }"
     }
   ],
   "narrative": {
@@ -131,12 +455,71 @@
       "Light and dark themes from one token set."
     ],
     "rules": [
-      { "name": "The Signal Rule", "body": "Status colours appear only where a status is being reported. Never tint a heading, icon or panel in green, amber or red for emphasis.", "section": "colors" },
-      { "name": "The Identity Rule", "body": "Agent colours identify an agent and are never used for status.", "section": "colors" },
-      { "name": "The Title Case Rule", "body": "Labels in titles, tabs, headings, buttons and tags use title case (\"Needs Decision\", \"Send Back to Agent\"). Sentences stay in sentence case.", "section": "typography" },
-      { "name": "The Mono Rule", "body": "Mono is reserved for citation tags and identifiers or raw output in the audit trail. Never set amounts, headings or body copy in mono.", "section": "typography" },
-      { "name": "The Floats-Only Rule", "body": "A shadow means the element is floating above the page and can be dismissed. Panels, cards, tiles and buttons never carry one.", "section": "elevation" },
-      { "name": "The Square Marker Rule", "body": "Status is a small squared marker (8px, 2px radius) beside a text label inside a 4px-radius tag. It is never a fully rounded pill.", "section": "shapes" }
+      {
+        "name": "The Signal Rule",
+        "body": "Status colours appear only where a status is being reported. Never tint a heading, icon or panel in green, amber or red for emphasis.",
+        "section": "colors"
+      },
+      {
+        "name": "The Identity Rule",
+        "body": "Agent colours identify an agent and are never used for status.",
+        "section": "colors"
+      },
+      {
+        "name": "The Title Case Rule",
+        "body": "Labels in titles, tabs, headings, buttons and tags use title case (\"Needs Decision\", \"Send Back to Agent\"). Sentences stay in sentence case.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono Rule",
+        "body": "Mono is reserved for citation tags and identifiers or raw output in the audit trail. Never set amounts, headings or body copy in mono.",
+        "section": "typography"
+      },
+      {
+        "name": "The Floats-Only Rule",
+        "body": "A shadow means the element is floating above the page and can be dismissed. Panels, cards, tiles and buttons never carry one.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Square Marker Rule",
+        "body": "Status is a small squared marker (8px, 2px radius) beside a text label inside a 4px-radius tag. It is never a fully rounded pill.",
+        "section": "shapes"
+      },
+      {
+        "name": "The Step Record Rule",
+        "body": "Anything the run says about itself, including the Live Run feed's narration, is a third-person step record (\"Found contract amendment 07…\", \"Invoice put on hold: …\"), never \"I\" or \"we\", and appears whole as it arrives, with no typing animation.",
+        "section": "overview"
+      },
+      {
+        "name": "The Shape Rule",
+        "body": "A status marker never relies on colour alone. In rule lists a filled square means a rule requires a person, a diamond a conflict or stop, a tick a check that passed, and an outline a note; each also carries a visually hidden text label.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Nested Cards Rule",
+        "body": "Nothing inside a panel is a card. Option rows and evidence items are ruled rows with a 1px Rule above each; a verdict is a 3px inset line in its status colour, never a filled box.",
+        "section": "components"
+      },
+      {
+        "name": "The Links Rule",
+        "body": "Every navigation target is a link with a real hash URL, so it opens in a new tab; a queue's tab, search and sort live in the hash query so Back and a bookmark return to the same view.",
+        "section": "components"
+      },
+      {
+        "name": "The Configured Clock Rule",
+        "body": "Review windows, reminder days and escalation days come from the API, which reads the agent's config. The browser never restates a clock figure.",
+        "section": "overview"
+      },
+      {
+        "name": "The Override Rule",
+        "body": "An approval against the policy check is amber and says so (\"Approved Against the Policy by …\") on the case, its queue row and the Overview. Escalation is neutral grey; red is kept for rule stops and conflicts.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Name Rule",
+        "body": "One name per status everywhere, the phone strip included (\"Needs Decision\"), and one elapsed-time format in words (\"6 min\", \"2 days\").",
+        "section": "overview"
+      }
     ],
     "dos": [
       "Do lead every case with the decision and state in one sentence what approving, sending back or escalating will do.",
@@ -145,7 +528,10 @@
       "Do use title case for labels in titles, tabs, headings, buttons and tags.",
       "Do separate surfaces with 1px rules and tone; reserve shadows for menus, dialogs and docked drawers.",
       "Do give every theme-dependent colour a token in `docs/design/agent-portal/tokens.css`, defined for light and dark.",
-      "Do keep controls at 44px (36px for compact ones) and focus visible with the 2px Action Blue outline."
+      "Do keep controls at 44px (36px for compact ones, including sort headers, roadmap chips and drawer tabs) and focus visible with the 2px Action Blue outline.",
+      "Do name the two identifiers one way each: \"Case INV-20931\" for the case reference and \"vendor invoice SAL-4410\" for the vendor's own number.",
+      "Do write a date with a time one way: \"21 Nov 2026, 14:05\"; a time of day alone is \"14:05:09\"; Live Run offsets are \"00:41\".",
+      "Do lead with the policy check's verdict when it conflicts with the agent, and set the agent's prose quieter under \"Agent's Reasoning\"."
     ],
     "donts": [
       "Don't drift into the pill-bubble AI look: no fully rounded pill chips, gradients, glows or sparkle icons.",

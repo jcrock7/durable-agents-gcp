@@ -1,16 +1,23 @@
-import { liveHash } from "./routes.js";
+import { caseHash, liveHash } from "./routes.js";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
-import { cents, caseTag, plain, postJson, shortDate, sourceLabel, titleCase, usd, usePoll, type Agent, type AnyState, type CaseDetail, type Skill } from "./api.js";
+import { ago, cents, caseTag, duration, costText, dateTime, plain, postJson, shortDate, sourceLabel, titleCase, until, usd, usePoll, type Agent, type AnyState, type CaseDetail, type CasePage, type PersonReason, type Skill, type WriteRecord } from "./api.js";
 import { approveEffect, decisionOutcome, escalateEffect, sendBackEffect } from "./effects.js";
 import { Close } from "./icons.js";
 import { Inspector } from "./Inspector.js";
-import { clock, StepStrip, stepTime, type Step } from "./StepStrip.js";
+import { Term } from "./Glossary.js";
+import { clock, StepStrip, stepTime, type Chapter, type Step } from "./StepStrip.js";
 
 const POLICY_SKILL = "ap-resolution-policy";
 const RELEVANCE: Record<string, [string, string]> = { supports: ["ok", "Supports"], contradicts: ["crit", "Contradicts"], not_applicable: ["idle", "Not Applicable"] };
 
 /** The selected case as a page: the decision first, then the agent's work, the numbers, the evidence and the audit trail. */
-export function CaseView({ detail, agent, me, onBack, onChanged }: { detail: CaseDetail; agent: Agent; me: string; onBack: () => void; onChanged: () => void }) {
+type CaseProps = { detail: CaseDetail; agent: Agent; me: string; onBack: () => void; onChanged: () => void; onNav: (hash: string) => void };
+
+export function CaseView(props: CaseProps & { onRef?: (workflowId: string, ref: string) => void }) {
+  const { detail, onRef } = props;
+  const { workflowId } = detail.summary;
+  const ref = detail.summary.ref || workflowId;
+  useEffect(() => onRef?.(workflowId, ref), [workflowId, ref, onRef]);
   if (!detail.state) {
     return (
       <main className="page">
@@ -18,7 +25,7 @@ export function CaseView({ detail, agent, me, onBack, onChanged }: { detail: Cas
       </main>
     );
   }
-  return detail.agentId === "research-summarize" ? <ResearchCase detail={detail} agent={agent} me={me} onBack={onBack} onChanged={onChanged} /> : <InvoiceCase detail={detail} agent={agent} me={me} onBack={onBack} onChanged={onChanged} />;
+  return detail.agentId === "research-summarize" ? <ResearchCase {...props} /> : <InvoiceCase {...props} />;
 }
 
 type Mode = "choose" | "approve" | "back" | "escalate";
@@ -33,10 +40,16 @@ function ReviewBar(props: {
   ifEscalate?: string;
   /** When a rule found a conflict: suggested feedback, and sending back becomes the primary action. */
   conflictHint?: string;
+  /** The heading for that warning in the approve dialog. */
+  conflictTitle?: string;
+  /** Who recommends sending back: the deterministic check, never the agent. */
+  checkLabel?: string;
   /** What approving will write, shown in the approval dialog. */
   approveFacts?: Array<[string, string]>;
   /** Whether the workflow keeps a note with an approval. A conflict makes the reason required. */
   approveNote?: boolean;
+  /** Ready-made feedback for Send Back, so a phone user can pick one instead of typing. */
+  sendBackPresets?: string[];
   onChanged: () => void;
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
@@ -62,6 +75,21 @@ function ReviewBar(props: {
       t.setSelectionRange(t.value.length, t.value.length);
     } else d.querySelector<HTMLElement>("[data-first]")?.focus();
   }, [mode]);
+  // Keyboard: A approve, S send back, E escalate, each opening its dialog. Never while typing or with a dialog open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (mode || busy || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest("input, textarea, select, [contenteditable='true'], dialog")) return;
+      const k = e.key.toLowerCase();
+      const next: Mode | undefined = k === "a" ? "approve" : k === "s" ? "back" : k === "e" && props.ifEscalate ? "escalate" : undefined;
+      if (!next) return;
+      e.preventDefault();
+      setMode(next);
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, [mode, busy, props.ifEscalate]);
   const send = async (body: Record<string, unknown>) => {
     setBusy(true);
     setError(undefined);
@@ -93,8 +121,9 @@ function ReviewBar(props: {
     const text = showText ? form.text.trim() : "";
     void send(mode === "approve" ? { approved: true, ...(text ? { feedback: text } : {}) } : mode === "back" ? { approved: false, feedback: text } : { escalate: { note: text } });
   };
+  const KEY: Partial<Record<Mode, string>> = { approve: "A", back: "S", escalate: "E" };
   const action = (m: Mode, label: string, primary: boolean, first?: boolean) => (
-    <button key={m} type="button" className={`btn${primary ? " primary" : ""}`} disabled={busy} aria-haspopup="dialog" data-first={first ? "" : undefined} onClick={() => setMode(m)}>
+    <button key={m} type="button" className={`btn${primary ? " primary" : ""}`} disabled={busy} aria-haspopup="dialog" aria-keyshortcuts={KEY[m]} data-first={first ? "" : undefined} onClick={() => setMode(m)}>
       {label}…
     </button>
   );
@@ -111,7 +140,7 @@ function ReviewBar(props: {
   };
   const lead = conflict ? (
     <>
-      <b>Recommended: send back.</b> {props.conflictHint} <b>If you approve anyway:</b> {props.ifApprove}
+      <b>{props.checkLabel ?? "Policy check"}: send back.</b> {props.conflictHint} <b>If you approve anyway:</b> {props.ifApprove}
     </>
   ) : (
     <>
@@ -120,12 +149,22 @@ function ReviewBar(props: {
   );
   return (
     <section className="dbar" aria-label="Your decision">
-      <div className="what">{lead}</div>
+      {/* The bar always shows what approving does, in full, on its own row; the verdict is a short tag. The dialog carries the reason. */}
+      <div className="what">
+        {conflict && <span className="tag crit verdict">{props.checkLabel ?? "Policy check"}: Send Back</span>}
+        <b>{conflict ? "If you approve anyway:" : "If you approve:"}</b> {props.ifApprove}
+      </div>
       <div className="dbar-actions">{actions()}</div>
       <button type="button" className="btn primary dbar-decide" disabled={busy} aria-haspopup="dialog" onClick={() => setMode("choose")}>
         Decide…
       </button>
-      <span className="who">Recorded as {props.me}</span>
+      <span className="who">
+        Recorded as {props.me}
+        <span className="keys" aria-hidden="true">
+          {" "}
+          · Keys: <kbd>A</kbd> Approve, <kbd>S</kbd> Send Back{props.ifEscalate ? <>, <kbd>E</kbd> Escalate</> : null}
+        </span>
+      </span>
       {error && !mode && (
         <span className="form-error" role="alert">
           The decision was not recorded: {error}
@@ -172,7 +211,7 @@ function ReviewBar(props: {
             </header>
             {mode === "approve" && conflict && (
               <div className="gap crit">
-                <b>This conflicts with the policy.</b> {props.conflictHint}
+                <b>{props.conflictTitle ?? "This conflicts with the policy."}</b> {props.conflictHint}
               </div>
             )}
             <p className="modal-effect">
@@ -208,6 +247,16 @@ function ReviewBar(props: {
               </>
             )}
             {mode === "back" && conflict && feedback === props.conflictHint && <span className="muted">Suggested from the policy conflict. Edit it as you need.</span>}
+            {mode === "back" && props.sendBackPresets && props.sendBackPresets.length > 0 && (
+              <div className="presets" role="group" aria-label="Common Feedback">
+                <span className="muted">Common feedback:</span>
+                {props.sendBackPresets.map((p) => (
+                  <button key={p} type="button" className="btn sm" aria-pressed={feedback === p} onClick={() => setFeedback(p)}>
+                    {p}
+                  </button>
+                ))}
+              </div>
+            )}
             {error && (
               <span className="form-error" role="alert">
                 The decision was not recorded: {error}. Your text is kept; try again.
@@ -221,9 +270,14 @@ function ReviewBar(props: {
               <button type="button" className="btn" disabled={busy} data-first={showText ? undefined : ""} onClick={() => setMode(null)}>
                 Cancel
               </button>
-              <button type="submit" className="btn primary" disabled={busy || !ready}>
+              <button type="submit" className="btn primary" disabled={busy || !ready} aria-describedby={!ready ? "decide-hint" : undefined}>
                 {busy ? "Sending…" : form.confirm}
               </button>
+              {!ready && (
+                <span id="decide-hint" className="form-hint">
+                  {conflict && mode === "approve" ? "A reason is required to approve against the policy." : `Write the ${form.label.toLowerCase().replace(/ \(optional\)$/, "")} to confirm.`}
+                </span>
+              )}
             </footer>
           </form>
         )}
@@ -240,9 +294,10 @@ function cited(text: string): ReactNode[] {
         {part
           .slice(1, -1)
           .split(/\s*,\s*/)
-          .map((r) => (
+          .map((r, j) => (
             <Fragment key={r}>
-              <span className="cite">{r}</span>{" "}
+              {j > 0 && " "}
+              <span className="cite">{r}</span>
             </Fragment>
           ))}
       </Fragment>
@@ -252,15 +307,44 @@ function cited(text: string): ReactNode[] {
   );
 }
 
-function BackLink({ agent, onBack }: { agent: Agent; onBack: () => void }) {
+function BackLink({ agent }: { agent: Agent; onBack?: () => void }) {
   return (
-    <button type="button" className="link-btn" onClick={onBack}>
+    <a className="back-link" href={`#/agent/${agent.id}`}>
       ‹ All {agent.name} Cases
-    </button>
+    </a>
   );
 }
 
-function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDetail; agent: Agent; me: string; onBack: () => void; onChanged: () => void }) {
+const GROUP: Record<PersonReason["group"], string> = { policy: "Policy", risk: "Risk", evidence: "Evidence" };
+
+/** After a decision: the oldest other case waiting on a person, one click away. */
+function NextDecision({ current }: { current: string }) {
+  const page = usePoll<CasePage>("/api/cases?needs=1&sort=age&dir=asc&limit=20", 10_000).data;
+  if (!page) return null;
+  const next = page.cases.find((c) => c.workflowId !== current);
+  if (!next) return <span className="muted">No other decisions are waiting.</span>;
+  const others = page.cases.filter((c) => c.workflowId !== current).length;
+  return (
+    <a className="btn sm primary" href={caseHash(next.agentId, next.workflowId)}>
+      Next Decision: Case {next.ref}
+      {others > 1 ? ` (${others} Waiting)` : ""} ›
+    </a>
+  );
+}
+
+/** One ERP write and what allowed it. */
+function WriteLine({ w }: { w: WriteRecord }) {
+  return (
+    <li className={w.by === "person" ? "pass" : "note"}>
+      <span className="sr">{w.by === "person" ? "Allowed by a person:" : "Allowed by a rule:"}</span>
+      <div>
+        <b>{w.label}.</b> {w.why}
+      </div>
+    </li>
+  );
+}
+
+function InvoiceCase({ detail, agent, me, onBack, onChanged }: CaseProps) {
   const { summary, facts } = detail;
   const s = detail.state!;
   const [tagClass, tagText] = caseTag(summary);
@@ -273,6 +357,9 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
   const usage: AnyState[] = s.usage ?? [];
   const cost = usage.reduce((sum, u) => sum + (u.costUsd ?? 0), 0);
   const [reason, setReason] = useState("");
+  const [recheck, setRecheck] = useState<{ busy?: boolean; error?: string; sent?: boolean }>({});
+  const writes = detail.writes ?? [];
+  const decision = detail.decision;
 
   const policyVersion: string | undefined = s.skillVersions?.[POLICY_SKILL];
   const policy = usePoll<Skill>(policyVersion ? `/api/agents/${agent.id}/skills/${POLICY_SKILL}?version=${encodeURIComponent(policyVersion)}` : null, 600_000).data;
@@ -282,16 +369,17 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
   const invNo: string | undefined = s.invoice?.vendorInvoiceNumber;
   const exception = (proposal?.exceptionType ?? s.match?.exceptionTypes?.[0] ?? "exception").replace(/_/g, " ");
   const amount: number | undefined = s.adjustment?.amountCents;
-  const subject = `${vendor ? `${vendor} ` : ""}invoice ${invNo ?? summary.ref}`;
+  // One name for each identifier: "vendor invoice SAL-…" is the vendor's number, "case INV-…" is ours.
+  const subject = invNo ? `vendor invoice ${invNo}${vendor ? ` from ${vendor}` : ""}` : `case ${summary.ref}`;
   const actionLabel = titleCase(proposal?.action);
   const routeFit: { fits: boolean; expected?: string; why?: string } | undefined = s.route?.policyFit;
-  const headline = !summary.needsPerson
-    ? `${titleCase(exception)} on ${subject}`
-    : routeFit && !routeFit.fits
-      ? `The agent proposes ${actionLabel} for the ${amount != null ? `${cents(amount)} ` : ""}${exception} on ${subject}. ${routeFit.expected ? `The policy points to ${titleCase(routeFit.expected)}.` : "That does not fit the policy."}`
-      : proposal?.action === "accept_variance" && amount != null
-      ? `Approve a ${cents(amount)} ${exception} on ${subject}?`
-      : `Approve “${actionLabel}” for the ${exception} on ${subject}?`;
+  // One headline form for every case, waiting or decided: what the agent proposed, and the policy check when it disagrees.
+  // What was decided is the receipt band's job.
+  const headline = proposal
+    ? `The agent ${summary.needsPerson ? "proposes" : "proposed"} ${actionLabel} for the ${amount != null ? `${cents(Math.abs(amount))} ` : ""}${exception} on ${subject}.${
+        routeFit && !routeFit.fits ? ` The policy check points to ${routeFit.expected ? titleCase(routeFit.expected) : "a different action"}.` : ""
+      }`
+    : `The three-way match found a ${exception} on ${subject}.`;
 
   // The numbers: unit prices from the match engine's finding, quantity and item from the ERP line.
   const finding: AnyState | undefined = (s.match?.findings ?? []).find((f: AnyState) => f.details?.invoicedUnitPriceCents != null && f.details?.poUnitPriceCents != null);
@@ -303,14 +391,13 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
 
   // Why a person: the rules that fired, with the approval line drawn when one of them is the threshold.
   const reasons: string[] = route?.reasons ?? s.reasons ?? [];
-  const lineMatch = reasons.map((r) => /amount (\d+(?:\.\d+)?) is over the (\d+(?:\.\d+)?) approval line/.exec(r)).find(Boolean);
-  const over = lineMatch ? { amount: Number(lineMatch[1]), limit: Number(lineMatch[2]) } : null;
+  const over = detail.threshold ? { amount: detail.threshold.amountCents / 100, limit: detail.threshold.lineCents / 100 } : null;
   const scale = over ? Math.max(over.amount * 1.1, over.limit * 1.5) : 1;
   const routing =
     s.status === "blocked" || s.status === "escalated"
       ? `${s.status === "blocked" ? "Blocked" : "Escalated to a person"}. The invoice is held.`
       : s.status === "on_hold"
-        ? "On hold."
+        ? "The invoice stays on hold."
         : route?.path === "escalate"
           ? "Goes to a person. The invoice is held."
           : route?.needsPerson
@@ -318,9 +405,14 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
               ? `Approved by ${s.reviewer}.`
               : null
             : route
-              ? "No approval needed: within policy."
+              ? writes.length
+                ? "No person was needed. Each write to the ERP below names the rule that allowed it."
+                : "No rule required a person."
               : "The agent is still working on this case.";
-  const closing: string[] = s.status ? (s.reasons ?? []).filter((r: string) => !reasons.includes(r)) : [];
+  const note = detail.decision?.escalationNote;
+  const closing: string[] = s.status ? (s.reasons ?? []).filter((r: string) => !reasons.includes(r) && r !== note && !/^escalated by /.test(r)) : [];
+  const personReasons = detail.personReasons ?? [];
+  const deadline = summary.needsPerson ? detail.deadline : undefined;
 
   const fit: { fits: boolean; expected?: string; why?: string } | undefined = route?.policyFit;
   const conflict = fit && !fit.fits ? fit : undefined;
@@ -347,34 +439,43 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
               : "Within policy"
             : mine
               ? "Nothing posts until you approve"
-              : plain(String(t.detail ?? "").replace(/^exception:\s*/i, "")),
+              : // The escalation note is shown once, in the decision band; the strip names who acted.
+                /^escalated by reviewer$/i.test(t.name)
+                ? `Escalated by ${s.reviewer ?? "a reviewer"}`
+                : note && String(t.detail ?? "").includes(note)
+                  ? "Invoice on hold; the case is with an AP specialist"
+                  : plain(String(t.detail ?? "").replace(/^exception:\s*/i, "")),
       time: stepTime(timeline as Array<{ at: string; state?: string }>, i),
       now,
       detail: [
-        {
+        // A step that ran nothing has no What Ran cell; the route and a paused step say what they did instead.
+        ...(!stepCalls.length && !isRoute && !now ? [] : [{
           label: "What Ran",
           body: stepCalls.length ? (
-            stepCalls.map((c, k) => (
-              <span key={k}>
-                {sourceLabel(c.ref)}{" "}
-                <span className="muted">
-                  · {c.outcome}, {c.durationMs} ms
+            stepCalls.map((c, k) => {
+              const w = writes.find((x) => x.ref === c.ref && x.at === c.at);
+              return (
+                <span key={k}>
+                  {sourceLabel(c.ref)}{" "}
+                  <span className="muted">
+                    · {c.outcome}, {c.durationMs} ms
+                  </span>
+                  {w && <span className={`allowed ${w.by}`}> · {w.by === "person" ? `Approved by ${w.who ?? "a person"}` : "Allowed by a rule (see Routing)"}</span>}
                 </span>
-              </span>
-            ))
+              );
+            })
           ) : (
-            <span>{isRoute ? "The workflow checked the proposal against fixed rules. The model cannot override them." : now ? "The run is paused. It resumes from here when a person decides." : "A step with no tool calls."}</span>
+            <span>{isRoute ? "The workflow checked the proposal against fixed rules. The model cannot override them." : "The run is paused. It resumes from here when a person decides."}</span>
           ),
-        },
+        }]),
         {
           label: isRoute || now ? "Rules" : "Recorded",
           body:
             isRoute || now ? (
-              reasons.length ? (
-                reasons.map((r) => <span key={r}>{plain(r)}.</span>)
-              ) : (
-                <span>No rule required a person.</span>
-              )
+              // The rules are stated once, in the routing panel; the step only counts them.
+              <span>
+                {reasons.length ? `${reasons.length} ${reasons.length === 1 ? "rule requires" : "rules require"} a person; see Why This Is with You.` : "No rule required a person."}
+              </span>
             ) : (
               <span>
                 {clock(t.at)}
@@ -382,48 +483,70 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
               </span>
             ),
         },
-        { label: "Result", body: <span>{mine ? "Nothing is written to the ERP until you approve." : plain(String(t.detail ?? "")) || "Done."}</span> },
+        {
+          label: "Result",
+          body: (
+            <span>
+              {mine ? "Nothing is written to the ERP until you approve." : plain(String(t.detail ?? "")) || "Done."}
+              {/^match$/i.test(t.name) && (
+                <span className="muted" style={{ display: "block", marginTop: 4 }}>
+                  A <Term term="Three-way match">three-way match</Term> checks the invoice against its purchase order and the goods receipt; a difference beyond the tolerance is an exception.
+                </span>
+              )}
+            </span>
+          ),
+        },
       ],
     };
   });
 
-  const at = (name: RegExp) => timeline.find((t) => name.test(String(t.name)));
-  const approvedStep = at(/^approved$/i);
-  const postedStep = at(/^post resolution$/i);
-  const escalatedStep = at(/^escalated by reviewer$/i);
-  const outcome = decisionOutcome({
-    actionLabel,
-    ref: summary.ref,
-    path: route?.path,
-    amountCents: amount,
-    payableCents: s.adjustment?.payableCents,
-    status: s.status,
-    reviewer: s.reviewer,
-    approvedAt: approvedStep?.at,
-    approvalReason: /reason: (.+)$/.exec(String(approvedStep?.detail ?? ""))?.[1],
-    postedAt: postedStep?.at,
-    escalationNote: escalatedStep ? String(escalatedStep.detail ?? "") : undefined,
-  });
-  const writes = calls.filter((c) => String(c.ref).startsWith("erp-write:") && c.outcome === "ok").length;
-  // A decided case opens on the step that carried the decision out, not on "Finished".
-  const decidedStep = summary.needsPerson ? -1 : timeline.findIndex((t) => t === (postedStep ?? escalatedStep ?? approvedStep));
+  // Every case reads as the same chapters; while a person must decide, that chapter is "Your Decision".
+  const CHAPTER: Array<[string, RegExp]> = [
+    ["Found", /^(match|read invoice)/i],
+    ["Investigated", /^gather evidence/i],
+    ["Proposed", /^(propose|revise|route)/i],
+    [summary.needsPerson ? "Your Decision" : "Decided", /^(waiting for approval|approved|sent back|escalated by reviewer)/i],
+  ];
+  const chapters: Chapter[] | undefined =
+    steps.length > 3
+      ? (() => {
+          const out: Chapter[] = [...CHAPTER.map(([title]) => ({ title, steps: [] as number[] })), { title: "Carried Out", steps: [] }];
+          let at = 0;
+          timeline.forEach((t, i) => {
+            const k = CHAPTER.findIndex(([, re]) => re.test(String(t.name)));
+            at = k >= 0 ? k : at >= CHAPTER.length - 1 || /^(post|confirm|message|finished|hold|waiting for receipt|receipt|reminder|invoice)/i.test(String(t.name)) ? CHAPTER.length : at;
+            out[at]!.steps.push(i);
+          });
+          return out;
+        })()
+      : undefined;
 
-  const approveLabel = route?.path === "post" ? "Approve and Post to ERP" : route?.path === "hold" ? "Approve and Hold Invoice" : "Approve";
+  const outcome = decisionOutcome({ actionLabel, ref: summary.ref, path: route?.path, amountCents: amount, payableCents: s.adjustment?.payableCents, status: s.status, decision });
+  // A decided case opens on the step that carried the decision out, not on "Finished".
+  const carriedAt = decision?.postedAt ?? decision?.escalatedAt ?? decision?.approvedAt;
+  const decidedStep = summary.needsPerson || !carriedAt ? -1 : timeline.findIndex((t) => t.at === carriedAt);
+
+  const approveLabel = route?.path === "post" ? "Approve and Post to ERP" : route?.path === "hold" || route?.path === "wait" ? "Approve and Hold Invoice" : "Approve";
   const ifApprove = approveEffect({ actionLabel, ref: summary.ref, path: route?.path, amountCents: amount, payableCents: s.adjustment?.payableCents, messageTo: route?.message?.recipient });
   const waitingSince = Date.parse(timeline.find((t) => t.state === "now")?.at ?? summary.startedAt);
-  const waitedMin = Math.max(0, Math.round((Date.now() - waitingSince) / 60000));
-  const waited = waitedMin < 60 ? `${waitedMin}m` : `${Math.floor(waitedMin / 60)}h ${waitedMin % 60}m`;
+  const waited = ago(new Date(waitingSince).toISOString());
 
   return (
     <>
       <main className="page" aria-labelledby="case-h">
         <div className="dh">
           <div className="row" style={{ alignItems: "center" }}>
-            <span className={`tag ${summary.needsPerson && conflict ? "crit" : tagClass}${summary.needsPerson ? " solid" : ""}`}>{summary.needsPerson ? `Needs Your Decision${conflict ? " · Conflicts with Policy" : ""} · Waiting ${waited}` : tagText}</span>
+            <span className={`tag ${summary.needsPerson && conflict ? "crit" : tagClass}${summary.needsPerson ? " solid" : ""}`}>{summary.needsPerson ? `Needs Decision${conflict ? " · Conflicts with Policy" : ""} · Waiting ${waited}` : tagText}</span>
+            {summary.overridden && <span className="tag warn">Approved Against Policy</span>}
             <BackLink agent={agent} onBack={onBack} />
           </div>
           <h1 id="case-h">{headline}</h1>
-          {!summary.needsPerson && summary.reason && <p className="why">{plain(summary.reason)}.</p>}
+          {!summary.needsPerson && !outcome && summary.reason && <p className="why">{plain(summary.reason)}.</p>}
+          {deadline && (
+            <p className="why deadline">
+              <b>Decide within {until(deadline.expiresAt)}</b> (by {dateTime(deadline.expiresAt)}). {deadline.onExpiry}
+            </p>
+          )}
           <dl className="meta">
             {vendor && <Fact k="Vendor" v={vendor} />}
             {invNo && <Fact k="Vendor Invoice" v={invNo} />}
@@ -439,7 +562,8 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
           <section className={`outcome ${outcome.tone}`} aria-label="Decision">
             <span className={`tag ${outcome.tone}`}>{outcome.title}</span>
             <p>{outcome.body}</p>
-            {writes > 0 && (
+            {(decision?.approvedAt || decision?.escalatedAt) && <NextDecision current={summary.workflowId} />}
+            {writes.length > 0 && (
               <button
                 type="button"
                 className="link-btn"
@@ -449,7 +573,7 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                   el?.scrollIntoView({ block: "start" });
                 }}
               >
-                See the {writes === 1 ? "ERP Write" : `${writes} ERP Writes`} in the Audit Trail
+                See the {writes.length === 1 ? "ERP Write" : `${writes.length} ERP Writes`} in the Audit Trail
               </button>
             )}
           </section>
@@ -459,7 +583,8 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
           key={decidedStep}
           initial={decidedStep >= 0 ? decidedStep : undefined}
           steps={steps}
-          action={{ label: summary.temporalStatus === "RUNNING" ? (summary.needsPerson || s.stage === "waiting" ? "Open Run View" : "Watch Live") : "Replay Run", href: liveHash(agent.id, summary.workflowId) }}
+          chapters={chapters}
+          action={{ label: "Open Run View", href: liveHash(agent.id, summary.workflowId) }}
         />
 
         <div className="g2">
@@ -467,7 +592,13 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
             {d && (
               <section className="panel card" aria-labelledby="num-h">
                 <h2 id="num-h" className="lab">
-                  {["The Numbers", `Line ${finding!.lineNo}`, line?.itemId, line?.description, qty != null ? `${qty} ${line?.uom ?? "Units"}` : null].filter(Boolean).join(" · ")}
+                  {["The Numbers", `Line ${finding!.lineNo}`, line?.itemId].filter(Boolean).join(" · ")}
+                  {(line?.description || qty != null) && (
+                    <span className="keep-case">
+                      {" · "}
+                      {[line?.description, qty != null ? `${qty} ${line?.uom ?? "units"}` : null].filter(Boolean).join(" · ")}
+                    </span>
+                  )}
                 </h2>
                 <div className="big">
                   <b>{cents(finding!.amountCents)}</b>
@@ -506,10 +637,10 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
             <section className="panel card" aria-labelledby="rec-h">
               <div className="row">
                 <h2 id="rec-h" className="lab">
-                  Agent Recommendation
+                  Agent’s Proposal
                 </h2>
                 {proposal && (
-                  <span className={`tag ${conflict ? "crit" : "info"}`}>
+                  <span className="tag idle">
                     {actionLabel} · {titleCase(proposal.confidence)} Confidence
                   </span>
                 )}
@@ -519,7 +650,18 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                   <b>Conflicts with policy.</b> {plain(conflict.why)}.{conflict.expected ? ` The policy points to ${titleCase(conflict.expected)}.` : ""}
                 </div>
               )}
-              <p className="rec">{proposal?.rationale ? cited(proposal.rationale) : "No proposal yet."}</p>
+              {proposal && (
+                <h3 className="lab sub-h">
+                  Agent’s Reasoning{Number(s.draftVersion ?? 1) > 1 ? ` · Draft ${s.draftVersion}` : ""}
+                  {conflict ? " · Not Supported by the Policy Check" : ""}
+                </h3>
+              )}
+              <p className={`rec${conflict ? " quiet" : ""}`}>{proposal?.rationale ? cited(proposal.rationale) : "No proposal yet."}</p>
+              {proposal && (
+                <p className="muted conf-note">
+                  <Term term="Confidence" /> is the agent’s own rating of its evidence: high, medium or low. Low always goes to a person; at high or medium the routing rules decide.
+                </p>
+              )}
               {proposal?.unconfirmed ? (
                 <div className="gap">
                   <b>Not confirmed.</b> {proposal.unconfirmed}
@@ -532,10 +674,12 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
               )}
 
               {proposal && (fit || alternatives.length > 0 || rule(proposal.action)) && (
-                <div className="opts" aria-label="Options">
-                  <div className="lab">Options</div>
+                <div className="opts" aria-labelledby="opts-h">
+                  <h3 id="opts-h" className="lab">
+                    Options
+                  </h3>
                   <Option kind="Agent proposed" action={proposal.action} text={rule(proposal.action)?.useWhen} verdict={fit ? (fit.fits ? "fits" : "conflict") : undefined} />
-                  {conflict?.expected && <Option kind="Policy points to" action={conflict.expected} text={rule(conflict.expected)?.useWhen} verdict="fits" />}
+                  {conflict?.expected && <Option kind="Policy check points to" action={conflict.expected} text={rule(conflict.expected)?.useWhen} verdict="fits" />}
                   {alternatives
                     .filter((a) => a.action !== conflict?.expected)
                     .map((a) => (
@@ -584,9 +728,12 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                   </span>
                 </div>
                 <div className="ev">
-                  {evidence.map((e) => {
+                  {evidence.map((e, idx) => {
                     const sum = detail.evidence?.[e.ref];
-                    const title = sum?.title ?? sourceLabel(e.source);
+                    // The same tool called twice (a second search) says which call this is.
+                    const same = evidence.filter((x) => x.source === e.source).length;
+                    const nth = evidence.slice(0, idx + 1).filter((x) => x.source === e.source).length;
+                    const title = `${sum?.title ?? sourceLabel(e.source)}${same > 1 && /search|list/.test(String(e.source)) ? ` · Search ${nth} of ${same}` : ""}`;
                     const body = sum?.body ?? "No summary was recorded for this item. Open the raw output below.";
                     const rel = e.relevance ? RELEVANCE[e.relevance] : undefined;
                     return (
@@ -595,10 +742,14 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                           <b>
                             <span className="cite">{e.ref}</span> {title}
                           </b>
-                          {rel ? <span className={`tag ${rel[0]}`}>{rel[1]}</span> : <span className="src">{citedRefs.has(e.ref) ? "Cited" : "Not cited"}</span>}
+                          {/* Stance and citation are two facts: show both, so the count above always matches. */}
+                          <span className="ev-tags">
+                            {rel && <span className={`tag ${rel[0]}`}>{rel[1]}</span>}
+                            <span className="src">{citedRefs.has(e.ref) ? "Cited" : "Not cited"}</span>
+                          </span>
                         </div>
                         <span>{body}</span>
-                        {e.relevanceNote && <span className="muted">Agent’s note: {e.relevanceNote}</span>}
+                        {e.relevanceNote ? <span className="muted">Agent’s note: {e.relevanceNote}</span> : !citedRefs.has(e.ref) && <span className="muted">The agent gathered this but did not cite it or note why.</span>}
                         <details>
                           <summary>Raw Output · {e.source}</summary>
                           <pre className="detail">{String(e.excerpt)}</pre>
@@ -629,35 +780,84 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
               <h2 id="why-h" className="lab">
                 {summary.needsPerson ? "Why This Is with You" : "Routing"}
               </h2>
+              <p className="muted terms-line">
+                Fixed rules decide this, not the model: the <Term term="Approval line">approval line</Term>, <Term term="Policy fit">policy fit</Term> and the <Term term="Protective hold">protective hold</Term>.
+              </p>
               <ul className="rules">
-                {routing && <li className="note">{routing}</li>}
+                {routing && (
+                  <li className="note">
+                    <span className="sr">Note:</span>
+                    <div>{routing}</div>
+                  </li>
+                )}
                 {closing.map((r) => (
                   <li key={r} className="note">
-                    {plain(r)}.
+                    <span className="sr">Note:</span>
+                    <div>{plain(r)}.</div>
                   </li>
                 ))}
-                {reasons.map((r) => (
-                  <li key={r} className={/does not fit the policy/.test(r) ? "crit" : undefined}>
-                    <div>
-                      {plain(r)}.
-                      {over && /approval line/.test(r) && (
-                        <div className="meter">
-                          <i style={{ width: `${Math.min(100, (100 * over.amount) / scale)}%` }} />
-                          <u style={{ left: `${(100 * over.limit) / scale}%` }}>
-                            <span>{cents(over.limit * 100)} line</span>
-                          </u>
-                          <s style={{ left: 0 }}>$0</s>
-                          <s style={{ right: 0 }}>{cents(Math.round(scale) * 100)}</s>
-                        </div>
-                      )}
-                    </div>
+                {(personReasons.length ? personReasons : reasons.map((r): PersonReason => ({ kind: "", group: "policy", label: plain(r), rule: r }))).map((pr) => {
+                  const crit = pr.kind === "policy_conflict" || pr.group === "risk";
+                  const r = pr.rule ?? pr.label;
+                  return (
+                    <li key={pr.label} className={crit ? "crit" : undefined}>
+                      <span className="sr">{crit ? "Conflict or risk:" : "Rule requiring a person:"}</span>
+                      <div>
+                        <span className="why-group">{GROUP[pr.group]}</span> {pr.label}.
+                        {pr.rule && personReasons.length > 0 && (pr.kind === "policy_conflict" || pr.group !== "policy") && <span className="rule-text">Rule: {plain(pr.rule)}</span>}
+                        {over && pr.kind === "approval_line" && (
+                          <div className="meter" role="img" aria-label={`${cents(over.amount * 100)} against a ${cents(over.limit * 100)} approval line`}>
+                            <i style={{ width: `${Math.min(100, (100 * over.amount) / scale)}%` }} />
+                            <span className="meter-line" style={{ left: `${(100 * over.limit) / scale}%` }}>
+                              <span>{cents(over.limit * 100)} line</span>
+                            </span>
+                            <span className="meter-end" style={{ left: 0 }}>
+                              $0
+                            </span>
+                            <span className="meter-end" style={{ right: 0 }}>
+                              {cents(Math.round(scale) * 100)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+                {conflict && !reasons.some((x) => /does not fit the policy/.test(x)) && (
+                  <li className="crit">
+                    <span className="sr">Conflict or risk:</span>
+                    <div>{plain(`${proposal?.action} does not fit the policy: ${conflict.why}`)}.</div>
                   </li>
-                ))}
-                {conflict && !reasons.some((r) => /does not fit the policy/.test(r)) && <li className="crit">{plain(`${proposal?.action} does not fit the policy: ${conflict.why}`)}.</li>}
-                {s.invoice && !s.invoice.containsInstructions && <li className="pass">Invoice text was screened for hidden instructions. Passed.</li>}
-                {s.invoice?.containsInstructions && <li>Instructions were found in the invoice: {s.invoice.instructionsSummary || "unspecified"}.</li>}
-                {proposal?.fraudFlag && <li>Possible fraud: {proposal.fraudReason || "flagged by the agent"}.</li>}
+                )}
+                {s.invoice && !s.invoice.containsInstructions && (
+                  <li className="pass">
+                    <span className="sr">Passed:</span>
+                    <div>Invoice text was screened for hidden instructions. Passed.</div>
+                  </li>
+                )}
+                {s.invoice?.containsInstructions && (
+                  <li className="crit">
+                    <span className="sr">Stopped:</span>
+                    <div>Instructions were found in the invoice: {s.invoice.instructionsSummary || "unspecified"}.</div>
+                  </li>
+                )}
+                {proposal?.fraudFlag && (
+                  <li className="crit">
+                    <span className="sr">Stopped:</span>
+                    <div>Possible fraud: {proposal.fraudReason || "flagged by the agent"}.</div>
+                  </li>
+                )}
               </ul>
+              {writes.length > 0 && (
+                <>
+                  <h3 className="lab sub-h">Writes to the ERP</h3>
+                  <ul className="rules">
+                    {writes.map((w) => (
+                      <WriteLine key={`${w.ref}@${w.at}`} w={w} />
+                    ))}
+                  </ul>
+                </>
+              )}
             </section>
 
             <section className="panel card" aria-labelledby="run-h">
@@ -668,28 +868,48 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                 {seconds != null && (
                   <>
                     <dt>Time to proposal</dt>
-                    <dd>{seconds} seconds</dd>
+                    <dd>{duration(seconds)}</dd>
                   </>
                 )}
                 <dt>Tool calls</dt>
                 <dd>{calls.length}</dd>
                 <dt>Model cost</dt>
                 <dd>{usd(cost, 4)}</dd>
-                <dt>Review round</dt>
-                <dd>{s.round ?? 1}</dd>
+                <dt>Proposal drafts</dt>
+                <dd>{s.draftVersion ?? 0}</dd>
+                {(decision?.sentBack ?? 0) > 0 && (
+                  <>
+                    <dt>Sent back</dt>
+                    <dd>{decision!.sentBack} {decision!.sentBack === 1 ? "time" : "times"}</dd>
+                  </>
+                )}
+                {Number(s.round ?? 1) > 1 && (
+                  <>
+                    <dt>Match rounds</dt>
+                    <dd>{s.round}</dd>
+                  </>
+                )}
                 {s.reviewer && (
                   <>
                     <dt>Reviewed by</dt>
                     <dd>{s.reviewer}</dd>
                   </>
                 )}
-                {Object.entries((s.skillVersions ?? {}) as Record<string, string>).map(([n, v]) => (
-                  <Fragment key={n}>
-                    <dt>{titleCase(n)}</dt>
-                    <dd>Version {v}</dd>
-                  </Fragment>
-                ))}
               </dl>
+              {Object.keys(s.skillVersions ?? {}).length > 0 && (
+                <>
+                  <h3 className="lab sub-h">
+                    <Term term="Skill">Skills</Term> Used
+                  </h3>
+                  <ul className="skill-list">
+                    {Object.entries((s.skillVersions ?? {}) as Record<string, string>).map(([n, v]) => (
+                      <li key={n}>
+                        {titleCase(n)} <span className="muted">version {v}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
             </section>
 
             {summary.temporalStatus === "RUNNING" && s.stage === "waiting" && (
@@ -697,10 +917,15 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                 className="panel card"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void postJson(`/api/cases/${summary.workflowId}/recheck`, { reason }).then(() => {
-                    setReason("");
-                    onChanged();
-                  });
+                  if (recheck.busy) return;
+                  setRecheck({ busy: true });
+                  postJson(`/api/cases/${summary.workflowId}/recheck`, { reason })
+                    .then(() => {
+                      setReason("");
+                      setRecheck({ sent: true });
+                      onChanged();
+                    })
+                    .catch((err: Error) => setRecheck({ error: err.message }));
                 }}
               >
                 <label htmlFor="steer" className="lab">
@@ -708,10 +933,20 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
                 </label>
                 <div className="steer">
                   <input id="steer" type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. The receipt for this PO was posted this morning" />
-                  <button type="submit" className="btn" disabled={!reason.trim()}>
-                    Request Re-check
+                  <button type="submit" className="btn" disabled={!reason.trim() || recheck.busy}>
+                    {recheck.busy ? "Sending…" : "Request Re-check"}
                   </button>
                 </div>
+                {recheck.error && (
+                  <span className="form-error" role="alert">
+                    The re-check was not requested: {recheck.error}. Your text is kept; try again.
+                  </span>
+                )}
+                {recheck.sent && (
+                  <span className="muted" role="status">
+                    Re-check requested. The case matches the invoice again now instead of waiting for the daily check.
+                  </span>
+                )}
               </form>
             )}
           </div>
@@ -732,15 +967,22 @@ function InvoiceCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDet
           me={me}
           approveLabel={approveLabel}
           ifApprove={ifApprove}
-          ifSendBack={sendBackEffect(agent.name, Number(s.round ?? 1))}
+          ifSendBack={sendBackEffect(agent.name, Number(s.draftVersion ?? 1))}
           ifEscalate={escalateEffect(summary.ref)}
           conflictHint={conflict ? plain(`${conflict.expected ? `The policy points to ${titleCase(conflict.expected)}: ` : ""}${conflict.why ?? "the proposed action does not fit the policy"}.`) : undefined}
           approveNote
+          sendBackPresets={[
+            ...(conflict?.expected ? [`Propose ${titleCase(conflict.expected)}, which the policy points to`] : []),
+            "Check the contract price in effect on the invoice date",
+            "Cite the evidence for every figure",
+            "Confirm the quantity received",
+          ]}
           approveFacts={[
             ["Action", actionLabel],
             ...(amount ? ([["Amount", cents(Math.abs(amount))]] as Array<[string, string]>) : []),
             ...(route?.path === "post" && s.adjustment?.payableCents != null ? ([["Invoice Payable After", cents(s.adjustment.payableCents)]] as Array<[string, string]>) : []),
-            ["Invoice", `${summary.ref}${invNo ? ` (vendor’s number ${invNo})` : ""}`],
+            ["Case", summary.ref],
+            ...(invNo ? ([["Vendor Invoice", invNo]] as Array<[string, string]>) : []),
           ]}
           onChanged={onChanged}
         />
@@ -779,11 +1021,19 @@ function Bar({ base, over }: { base: number; over?: boolean }) {
   );
 }
 
-function ResearchCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDetail; agent: Agent; me: string; onBack: () => void; onChanged: () => void }) {
+function ResearchCase({ detail, agent, me, onBack, onChanged }: CaseProps) {
   const { summary } = detail;
   const s = detail.state!;
   const [tagClass, tagText] = caseTag(summary);
   const timeline: AnyState[] = s.timeline ?? [];
+  const sources: Array<Record<string, string>> = s.sources ?? [];
+  const cov = detail.research;
+  const usage: AnyState[] = s.usage ?? [];
+  const deadline = summary.needsPerson ? detail.deadline : undefined;
+  const question = cov?.question ?? (s.question as string | undefined);
+  // One source carrying every point, or sources the draft leaves out, are what a reviewer must see first.
+  const single = cov && cov.points > 0 && cov.cited.length === 1;
+  const concerns = cov ? [single && `Every point rests on one source ([${cov.cited[0]}]).`, cov.unrelated.length > 0 && `The agent marked ${cov.unrelated.length} of ${cov.sources} sources as not about the question.`, cov.uncited.length > 0 && `${cov.uncited.length} of ${cov.sources} sources are not cited.`].filter(Boolean) as string[] : [];
   const steps: Step[] = timeline.map((t, i) => {
     const mine = t.state === "now" && summary.needsPerson;
     return {
@@ -794,70 +1044,134 @@ function ResearchCase({ detail, agent, me, onBack, onChanged }: { detail: CaseDe
       detail: [
         { label: "Recorded", body: <span>{clock(t.at)}</span> },
         { label: "Result", body: <span>{plain(String(t.detail ?? "")) || "Done."}</span> },
-        { label: "Sources So Far", body: <span>{(s.sources ?? []).length}</span> },
+        { label: "Sources So Far", body: <span>{sources.length}</span> },
       ],
     };
   });
+  const sourceTag = (id: number) =>
+    cov?.unrelated.includes(id) ? (
+      <span className="tag crit">Marked Unrelated</span>
+    ) : cov?.cited.includes(id) ? (
+      <span className="tag ok">Cited</span>
+    ) : (
+      <span className="tag idle">Not Cited</span>
+    );
   return (
     <>
       <main className="page" aria-labelledby="case-h">
         <div className="dh">
           <div className="row" style={{ alignItems: "center" }}>
-            <span className={`tag ${tagClass}${summary.needsPerson ? " solid" : ""}`}>{summary.needsPerson ? "Needs Your Decision" : tagText}</span>
+            <span className={`tag ${tagClass}${summary.needsPerson ? " solid" : ""}`}>{summary.needsPerson ? "Needs Decision" : tagText}</span>
             <BackLink agent={agent} onBack={onBack} />
           </div>
-          <h1 id="case-h">{summary.needsPerson ? "Approve this research brief?" : summary.title}</h1>
+          <h1 id="case-h">{summary.needsPerson ? `Approve the brief on “${question ?? "an unrecorded question"}”?` : (question ?? summary.title)}</h1>
+          {!question && <p className="why">This run started before the portal kept the question; the brief is shown as written.</p>}
           {!summary.needsPerson && summary.reason && <p className="why">{plain(summary.reason)}.</p>}
+          {deadline && (
+            <p className="why deadline">
+              <b>Decide within {until(deadline.expiresAt)}</b> (by {dateTime(deadline.expiresAt)}). {deadline.onExpiry}
+            </p>
+          )}
           <dl className="meta">
             <Fact k="Case" v={summary.ref || summary.workflowId} />
             <Fact k="Draft" v={`Version ${s.draftVersion ?? 0}`} />
-            <Fact k="Sources" v={String((s.sources ?? []).length)} />
+            <Fact k="Sources" v={cov ? `${cov.cited.length} cited of ${cov.sources}` : String(sources.length)} />
+            <Fact k="Model Cost" v={costText(summary)} />
           </dl>
         </div>
         <StepStrip steps={steps} />
-        <section className="panel card">
-          <h2 className="lab">Draft</h2>
-          <p className="rec" style={{ whiteSpace: "pre-wrap" }}>
-            {s.draft?.summary ?? "No draft yet."}
-          </p>
-        </section>
-        {(s.sources ?? []).length > 0 && (
-          <section className="panel card">
-            <h2 className="lab">Sources</h2>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: 60 }}>Ref</th>
-                    <th>Source</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.sources.map((src: Record<string, string>) => (
-                    <tr key={src.id}>
-                      <td>
-                        <span className="cite">{src.id}</span>
-                      </td>
-                      <td>
-                        <a href={src.url} target="_blank" rel="noreferrer">
-                          {src.title}
-                        </a>
-                      </td>
-                    </tr>
+        <div className="g2">
+          <div className="gcol">
+            <section className="panel card" aria-labelledby="draft-h">
+              <h2 id="draft-h" className="lab">
+                Draft {s.draftVersion ?? 0}
+              </h2>
+              {concerns.length > 0 && (
+                <div className="gap crit" role="note">
+                  <b>Check before approving.</b> {concerns.join(" ")}
+                </div>
+              )}
+              <p className="rec" style={{ whiteSpace: "pre-wrap" }}>
+                {s.draft?.summary ?? "No draft yet."}
+              </p>
+              {(s.draft?.keyPoints ?? []).length > 0 && (
+                <>
+                  <h3 className="lab sub-h">Key Points</h3>
+                  <ul className="rules">
+                    {(s.draft.keyPoints as string[]).map((p, i) => (
+                      <li key={i} className={cov && (cov.pointSources[i]?.length ?? 0) === 0 ? "crit" : "note"}>
+                        <span className="sr">{cov && (cov.pointSources[i]?.length ?? 0) === 0 ? "Uncited point:" : "Point:"}</span>
+                        <div>
+                          {p}
+                          {cov && <span className="rule-text">{(cov.pointSources[i]?.length ?? 0) === 0 ? "Cites no source" : `Cites ${cov.pointSources[i]!.map((n) => `[${n}]`).join(" ")}`}</span>}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </section>
+            {sources.length > 0 && (
+              <section className="panel card" aria-labelledby="src-h">
+                <h2 id="src-h" className="lab">
+                  Sources · {sources.length}
+                </h2>
+                <ul className="src-list">
+                  {sources.map((src) => (
+                    <li key={src.id}>
+                      <span className="cite">{src.id}</span>
+                      <a href={src.url} target="_blank" rel="noreferrer">
+                        {src.title} ↗
+                      </a>
+                      {sourceTag(Number(src.id))}
+                    </li>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
+                </ul>
+              </section>
+            )}
+          </div>
+          <div className="gcol">
+            <section className="panel card" aria-labelledby="rrun-h">
+              <h2 id="rrun-h" className="lab">
+                This Run
+              </h2>
+              <dl className="kv">
+                <dt>Question</dt>
+                <dd>{question ?? "Not recorded"}</dd>
+                <dt>Searches</dt>
+                <dd>{(s.queries ?? []).length ? (s.queries as string[]).map((q) => `“${q}”`).join(", ") : "–"}</dd>
+                <dt>Model cost</dt>
+                <dd>{costText(summary)}</dd>
+                {usage.map((u, i) => (
+                  <Fragment key={i}>
+                    <dt>{titleCase(u.step)}</dt>
+                    <dd>
+                      {u.model} · {usd(u.costUsd ?? 0, 4)}
+                    </dd>
+                  </Fragment>
+                ))}
+                {s.lastFeedback && (
+                  <>
+                    <dt>Last feedback</dt>
+                    <dd>{s.lastFeedback}</dd>
+                  </>
+                )}
+              </dl>
+            </section>
+          </div>
+        </div>
       </main>
       {summary.needsPerson && (
         <ReviewBar
           workflowId={summary.workflowId}
           me={me}
           approveLabel="Approve Brief"
-          ifApprove="the brief is marked approved and the run finishes."
+          ifApprove="the brief is marked approved and the run finishes. Nothing outside the portal changes."
           ifSendBack="the agent revises the draft using your feedback and brings a new version back to you."
+          conflictHint={concerns.length ? concerns.join(" ") : undefined}
+          conflictTitle="Check the sources first."
+          checkLabel="Source check"
+          sendBackPresets={["Cite only sources about the question", "Say plainly what the sources do not answer", "Support each point with more than one source"]}
           onChanged={onChanged}
         />
       )}

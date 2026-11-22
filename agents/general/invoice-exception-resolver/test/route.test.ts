@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkCitations, holdReason, policyFit, route, type MatchResult, type Proposal } from "../dist/index.js";
+import { HOLD_NEEDS_PERSON, checkCitations, holdReason, policyFit, route, type MatchResult, type Proposal } from "../dist/index.js";
 
 const match = (types: string[], fraud = false): MatchResult => ({
   invoiceId: "INV-1",
@@ -57,6 +57,14 @@ describe("route", () => {
   it("holds for credit memos and waits for receipts", () => {
     expect(route({ proposal: proposal({ exceptionType: "price_variance", action: "request_credit_memo" }), adjustment: adj(10_000), match: match(["price_variance"]), citationsValid: true })).toMatchObject({ path: "hold", invoiceStatus: "on_hold", message: { recipient: "vendor" } });
     expect(route({ proposal: proposal({ exceptionType: "no_receipt", action: "request_receipt_entry" }), adjustment: adj(0), match: match(["no_receipt"]), citationsValid: true })).toMatchObject({ path: "wait", message: { recipient: "receiving" } });
+  });
+
+  it("sends a hold to wait for a receipt to a person, except when replaying runs older than the rule", () => {
+    const wait = { proposal: proposal({ exceptionType: "no_receipt", action: "wait_for_receipt" }), adjustment: adj(0), match: match(["no_receipt"]), citationsValid: true };
+    expect(route(wait)).toMatchObject({ path: "wait", needsPerson: true, reasons: [HOLD_NEEDS_PERSON] });
+    expect(route(wait, undefined, { holdNeedsPerson: false })).toMatchObject({ path: "wait", needsPerson: false, reasons: [] });
+    // Holding while a credit memo is requested is recorded with the resolution, under the approval rules.
+    expect(route({ proposal: proposal({ action: "request_credit_memo" }), adjustment: adj(10_000), match: match(["price_variance"]), citationsValid: true }).reasons).not.toContain(HOLD_NEEDS_PERSON);
   });
 });
 

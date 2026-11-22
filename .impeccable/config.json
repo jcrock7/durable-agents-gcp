@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "apps/web/src/styles.css"
+        ],
+        "createdAt": "2026-11-22T01:30:06.808Z",
+        "reason": "Claude: .step.sel uses an inset bottom underline (box-shadow 0 -3px), documented in DESIGN.md Step Strip; two critique detector runs classed it a false positive"
+      }
+    ]
+  }
+}

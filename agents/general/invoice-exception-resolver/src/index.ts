@@ -4,7 +4,7 @@ import { createActivities } from "./activities.js";
 import { agentConfig } from "./agent.config.js";
 
 export { agentConfig } from "./agent.config.js";
-export { checkCitations, holdReason, policyFit, route } from "./route.js";
+export { HOLD_NEEDS_PERSON, checkCitations, holdReason, policyFit, route } from "./route.js";
 export type { Action, ExceptionType, InvoiceFields, Proposal, QueueInput, ResolveInput } from "./schemas.js";
 export type * from "./types.js";
 

@@ -13,7 +13,7 @@ const { readInvoice, gatherEvidence, proposeResolution, draftMessage } = proxyAc
 const { runMatch, computeAdjustment, queueMessage, setHold, postResolution, confirmInvoice } = proxyActivities<Activities>(TOOL_CALL_OPTIONS);
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-export const REVIEW_TIMEOUT = "7 days";
+export const REVIEW_TIMEOUT = `${agentConfig.review.days} days` as const;
 export const MAX_REVISIONS = 2;
 
 /**
@@ -49,9 +49,13 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
   let recheck = false;
   setHandler(recheckSignal, ({ reason }) => {
     recheck = true;
-    step("Re-check requested", reason, "done", "Someone asked me to re-check now instead of waiting for the daily check.");
+    step("Re-check requested", reason, "done", "A person asked for a re-check now instead of waiting for the daily check.");
   });
-  const review = new ReviewGate({ allowEscalate: true });
+  // Approving against the policy needs a reason on the record; the gate refuses an approval without one.
+  const review = new ReviewGate({
+    allowEscalate: true,
+    approvalNeedsReason: () => (state.route?.policyFit && !state.route.policyFit.fits ? "a reason is required when approving against the policy" : undefined),
+  });
   let humanTouches = 0;
 
   function step(name: string, detail = "", s: "done" | "now" | "error" = "done", narration?: string) {
@@ -81,7 +85,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
     state.status = status;
     state.reasons.push(...reasons);
     enter("done");
-    step(`Finished: ${status}`, reasons.join("; "), "done", `Done. The case is ${status.replace(/_/g, " ")}${reasons.length ? `: ${reasons.join("; ")}` : ""}.`);
+    step(`Finished: ${status}`, reasons.join("; "), "done", `Case finished as ${status.replace(/_/g, " ")}${reasons.length ? `: ${reasons.join("; ")}` : ""}.`);
     const last = state.timeline.at(-1);
     if (last) last.state = "done";
     await settle();
@@ -105,7 +109,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
   }
   async function holdAndFinish(status: CaseStatus, reasons: string[]): Promise<CaseResult> {
     record(await setHold({ invoiceId: input.invoiceId }));
-    step("Invoice on hold", reasons.join("; "), "done", `I put the invoice on hold: ${reasons.join("; ")}.`);
+    step("Invoice on hold", reasons.join("; "), "done", `Invoice put on hold: ${reasons.join("; ")}.`);
     return finish(status, reasons);
   }
 
@@ -171,9 +175,9 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
         record(adj);
         state.adjustment = adj.adjustment;
         // The policy-fit verdict is always recorded; it only changes the path for runs started after the rule shipped.
-        const decision = route({ proposal: proposed.proposal, adjustment: adj.adjustment, match, citationsValid: proposed.citationsValid }, agentConfig, { enforcePolicyFit: patched("policy-fit-rule") });
+        const decision = route({ proposal: proposed.proposal, adjustment: adj.adjustment, match, citationsValid: proposed.citationsValid }, agentConfig, { enforcePolicyFit: patched("policy-fit-rule"), holdNeedsPerson: patched("hold-needs-approval") });
         state.route = decision;
-        step("Route", `${decision.path}${decision.needsPerson ? ` → person: ${decision.reasons.join("; ")}` : ""}`, "done", decision.path === "escalate" ? `This goes to a person to handle: ${decision.reasons.join("; ")}.` : decision.needsPerson ? `This needs a person's approval: ${decision.reasons.join("; ")}.` : "The rules allow posting this without a person.");
+        step("Route", `${decision.path}${decision.needsPerson ? ` → person: ${decision.reasons.join("; ")}` : ""}`, "done", decision.path === "escalate" ? `Handed to a person: ${decision.reasons.join("; ")}.` : decision.needsPerson ? `Needs a person's approval: ${decision.reasons.join("; ")}.` : "Within the approval rules: no person is needed to post this.");
 
         if (decision.path === "escalate") return holdAndFinish("escalated", decision.reasons);
         if (!decision.needsPerson) break;
@@ -248,7 +252,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
       record(await setHold({ invoiceId: input.invoiceId }));
       enter("waiting");
       state.waitingFor = "a goods receipt";
-      step("Waiting for receipt", `re-checks daily; reminders on days ${wait.reminderDays.join(" and ")}; escalates on day ${wait.escalateDays}`, "now", `No goods receipt yet. I'll re-check daily and escalate on day ${wait.escalateDays}.`);
+      step("Waiting for receipt", `re-checks daily; reminders on days ${wait.reminderDays.join(" and ")}; escalates on day ${wait.escalateDays}`, "now", `No goods receipt yet. The case re-checks daily and escalates on day ${wait.escalateDays}.`);
       await settle();
       const started = Date.now();
       let received = false;
@@ -260,7 +264,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
         record(again);
         received = !again.match.findings.some((f) => f.code === "NO_RECEIPT");
         if (received) {
-          step("Receipt found", `day ${days}`, "done", "The goods receipt arrived, so I'm matching the invoice again.");
+          step("Receipt found", `day ${days}`, "done", "The goods receipt arrived; matching the invoice again.");
           break;
         }
         if (days >= wait.escalateDays) return holdAndFinish("escalated", [`no receipt after ${wait.escalateDays} days`]);
@@ -271,7 +275,7 @@ export async function resolveInvoiceException(rawInput: ResolveInput): Promise<C
           if (to) {
             record(await queueMessage({ to, subject: `Reminder: ${state.message!.subject}`, body: `Following up on our message about invoice ${state.invoice?.vendorInvoiceNumber ?? input.invoiceId}.\n\n${state.message!.body}`, invoiceId: input.invoiceId, runId }));
           }
-          step(`Reminder ${state.remindersSent}`, to ? `to ${to}` : "still waiting (no one to remind)", "done", to ? `Still no receipt, so I sent reminder ${state.remindersSent} to ${to}.` : "Still no receipt, and there is no one to remind.");
+          step(`Reminder ${state.remindersSent}`, to ? `to ${to}` : "still waiting (no one to remind)", "done", to ? `Still no receipt; reminder ${state.remindersSent} sent to ${to}.` : "Still no receipt, and there is no one to remind.");
         }
       }
       state.waitingFor = undefined;

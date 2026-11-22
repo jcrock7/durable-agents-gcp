@@ -14,6 +14,11 @@ export interface ReviewDecision {
 export interface ReviewGateOptions {
   /** Accept decisions that escalate the case to a person. */
   allowEscalate?: boolean;
+  /**
+   * Refuse an approval without a reason while this returns a message (for example, when a rule found a
+   * conflict with policy). Update validators do not run on replay, so tightening this is safe for in-flight runs.
+   */
+  approvalNeedsReason?: () => string | undefined;
 }
 
 export interface ReviewAck {
@@ -57,6 +62,8 @@ export class ReviewGate {
           if (!decision.approved && !decision.feedback?.trim()) {
             throw new Error("'feedback' is required when rejecting a draft");
           }
+          const needsReason = decision.approved ? options.approvalNeedsReason?.() : undefined;
+          if (needsReason && !decision.feedback?.trim()) throw new Error(needsReason);
         },
       },
     );

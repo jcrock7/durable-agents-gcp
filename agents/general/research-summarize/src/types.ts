@@ -27,9 +27,24 @@ export type Stage =
   | "revising"
   | "done";
 
+/** One model call's tokens and gateway cost. */
+export interface Usage {
+  step: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
 /** Live state, returned by the "progress" query. */
 export interface Progress {
   stage: Stage;
+  /** The question asked. Absent on runs started before it was recorded. */
+  question?: string;
+  /** How long a draft waits for review (the config value), so the portal can show the deadline. */
+  reviewTimeout?: string;
+  /** Model calls, with gateway cost. Absent on runs started before cost was recorded. */
+  usage?: Usage[];
   queries: string[];
   sources: SourceRef[];
   draftVersion: number;

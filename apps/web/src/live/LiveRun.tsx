@@ -1,17 +1,19 @@
 // The Live Run view (docs/superpowers/specs/2026-11-20-live-run-view-design.md): a case's workflow
 // graph, the agent's plain-language feed, and the Temporal engine drawer, live or as a replay.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { postJson, titleCase } from "../api.js";
 import { AgentFeed } from "./AgentFeed.js";
 import { EngineDrawer } from "./EngineDrawer.js";
 import { clock } from "./format.js";
-import { LIVE_GRAPHS, allNodes } from "./graphs.js";
+import type { Agent } from "../api.js";
+import { LIVE_GRAPHS, allNodes, withSchedule } from "./graphs.js";
 import { ReplayControls } from "./ReplayControls.js";
 import { RunGraph } from "./RunGraph.js";
 import { useLive } from "./useLive.js";
+import { Term } from "../Glossary.js";
 
-export function LiveRun(props: { agentId: string; agentName?: string; workflowId: string; demoControls: boolean; temporalUiUrl?: string; onBack: () => void }) {
-  const graph = LIVE_GRAPHS[props.agentId];
+export function LiveRun(props: { agentId: string; agentName?: string; schedule?: Agent["schedule"]; workflowId: string; demoControls: boolean; temporalUiUrl?: string; onBack: () => void }) {
+  const graph = useMemo(() => withSchedule(LIVE_GRAPHS[props.agentId], props.schedule), [props.agentId, props.schedule]);
   const live = useLive(props.workflowId, graph);
   const [filter, setFilter] = useState<string>();
   const [drawer, setDrawer] = useState(false);
@@ -23,7 +25,7 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
   const view = live.view;
   const root = useRef<HTMLDivElement>(null);
 
-  // The view covers the page, so it takes focus when it opens and gives it back when it closes.
+  // The view covers the page beside the collapsed rail, so it takes focus when it opens and gives it back when it closes.
   const before = useRef<Element | null>(null);
   const loaded = Boolean(view);
   useEffect(() => {
@@ -108,13 +110,13 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
     );
 
   return (
-    <div className="live-run" role="dialog" aria-modal="true" aria-label={`Run view for ${(view.header.ref ?? props.workflowId).toUpperCase()}`} tabIndex={-1} ref={root}>
+    <main className="live-run" aria-label={`Run View for Case ${(view.header.ref ?? props.workflowId).toUpperCase()}`} tabIndex={-1} ref={root}>
       <div className="live-top">
         {back}
         <span className="muted">{props.agentName}</span>
       </div>
       <header className="panel live-bar">
-        <b className="live-ref">{(view.header.ref ?? props.workflowId).toUpperCase()}</b>
+        <h1 className="live-ref">Case {(view.header.ref ?? props.workflowId).toUpperCase()}</h1>
         {status}
         <span className="t2">
           {[view.header.vendor, view.header.total].filter(Boolean).join(" · ")}
@@ -123,7 +125,7 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
         <span className="live-stats">
           <span>
             <b>{clock(view.elapsedMs)}</b>
-            <i>Elapsed</i>
+            <i>{live.mode === "replay" ? "Real Run Time" : "Elapsed"}</i>
           </span>
           <span>
             <b>${view.costUsd.toFixed(4)}</b>
@@ -135,9 +137,6 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
           </span>
         </span>
         <span className="live-actions">
-          <button type="button" className="btn sm" onClick={() => setDrawer(!drawer)} aria-expanded={drawer}>
-            Engine History · {view.events.length}
-          </button>
           {props.demoControls && live.mode === "live" && !parked && (
             <span className="live-demo">
               <span className="lab">Demo Control</span>
@@ -170,7 +169,9 @@ export function LiveRun(props: { agentId: string; agentName?: string; workflowId
         onClearFocus={() => setFocus(undefined)}
         temporalUiUrl={props.temporalUiUrl}
       />
-      <p className="live-foot">This site uses synthetic data.</p>
-    </div>
+      <p className="live-foot">
+        This site uses synthetic data. New to the run view? <Term term="Engine history">Glossary: engine history, workers and replay</Term>.
+      </p>
+    </main>
   );
 }

@@ -79,6 +79,22 @@ describe("researchAndSummarize", () => {
     expect(result.sources.map((s) => s.id)).toEqual([1, 2, 3]);
   });
 
+  it("records the question, the review window and each model call's cost, from new and old activity results", async () => {
+    const usage = (step: string) => ({ step, model: "fast", inputTokens: 10, outputTokens: 5, costUsd: 0.002 });
+    const activities = mockActivities({
+      planQueries: vi.fn(async () => ({ queries: ["apollo program"], usage: usage("plan searches") })),
+      writeDraft: vi.fn(async () => ({ summary: "Draft [1]", keyPoints: ["A point [1]"], citedSources: [1], unrelatedSources: [], usage: usage("draft") })),
+    } as unknown as Partial<Activities>);
+    await run({ question: QUESTION }, activities, async (handle) => {
+      await waitForReview(handle, 1);
+      const p = await getProgress(handle);
+      expect(p).toMatchObject({ question: QUESTION, reviewTimeout: "7 days", queries: ["apollo program"] });
+      expect(p.usage?.map((u) => u.step)).toEqual(["plan searches", "draft"]);
+      expect((p.draft as Record<string, unknown>).usage).toBeUndefined();
+      await submitReview(handle, { approved: true, reviewer: "jordan" });
+    });
+  });
+
   it("waits for a reviewer and returns the approved draft", async () => {
     const result = await run({ question: QUESTION }, mockActivities(), async (handle) => {
       await waitForReview(handle, 1);

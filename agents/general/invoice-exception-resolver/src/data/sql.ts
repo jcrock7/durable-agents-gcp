@@ -1,3 +1,4 @@
+import { isDemoPoolId } from "./generate.js";
 import type { ErpData } from "./model.js";
 
 /**
@@ -9,8 +10,9 @@ import type { ErpData } from "./model.js";
  *   erp_reader  SELECT on everything                      → MCP server erp-read
  *   erp_writer  INSERT on resolutions and outbox, UPDATE of invoices.status and exceptions.status
  *               only                                       → MCP server erp-write
- *   erp_demo    SELECT on everything, UPDATE of invoices.status and exceptions.status, DELETE on
- *               resolutions and outbox                     → portal API demo controls (resets the sample invoice)
+ *   erp_demo    SELECT on everything, UPDATE of invoices.status and exceptions.status, INSERT on
+ *               exceptions                                 → portal API demo controls (raises the exception
+ *                                                            on the next demo-pool invoice)
  */
 export const SCHEMA_SQL = `
 SET ROLE erp_owner;
@@ -164,7 +166,7 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA erp TO erp_writer;
 GRANT USAGE ON SCHEMA erp TO erp_demo;
 GRANT SELECT ON ALL TABLES IN SCHEMA erp TO erp_demo;
 GRANT UPDATE (status) ON erp.invoices, erp.exceptions TO erp_demo;
-GRANT DELETE ON erp.resolutions, erp.outbox TO erp_demo;
+GRANT INSERT ON erp.exceptions TO erp_demo;
 `;
 
 type Value = string | number | null | string[];
@@ -179,14 +181,36 @@ function literal(v: Value): string {
   return `'${v.replace(/'/g, "''")}'`;
 }
 
-function insert(table: string, columns: string[], rows: Value[][]): string {
+function insert(table: string, columns: string[], rows: Value[][], tail = ""): string {
   if (rows.length === 0) return "";
   const chunks: string[] = [];
   for (let i = 0; i < rows.length; i += 200) {
     const values = rows.slice(i, i + 200).map((row) => `  (${row.map(literal).join(", ")})`).join(",\n");
-    chunks.push(`INSERT INTO erp.${table} (${columns.join(", ")}) VALUES\n${values};`);
+    chunks.push(`INSERT INTO erp.${table} (${columns.join(", ")}) VALUES\n${values}${tail};`);
   }
   return chunks.join("\n");
+}
+
+/** The demo pool's rows only (generate.ts DEMO_POOL_SIZE), added to an ERP loaded before the pool existed. Idempotent. */
+export function demoPoolSql(data: ErpData): string {
+  const pool = new Set(data.invoices.filter((i) => isDemoPoolId(i.id)).map((i) => i.id));
+  const pos = new Set(data.invoices.filter((i) => pool.has(i.id)).map((i) => i.poId));
+  const skip = " ON CONFLICT DO NOTHING";
+  return [
+    "-- The demo-pool invoices (generate.ts DEMO_POOL_SIZE). Generated: do not edit. Safe to re-run.",
+    "\\set ON_ERROR_STOP on",
+    "BEGIN;",
+    "SET ROLE erp_owner;",
+    insert("purchase_orders", ["id", "vendor_id", "buyer_email", "issued_on", "status"], data.purchaseOrders.filter((p) => pos.has(p.id)).map((p) => [p.id, p.vendorId, p.buyerEmail, p.issuedOn, p.status]), skip),
+    insert("po_lines", ["po_id", "line_no", "item_id", "quantity", "unit_price_cents"], data.poLines.filter((l) => pos.has(l.poId)).map((l) => [l.poId, l.lineNo, l.itemId, l.quantity, l.unitPriceCents]), skip),
+    insert("receipts", ["id", "po_id", "received_on"], data.receipts.filter((g) => pos.has(g.poId)).map((g) => [g.id, g.poId, g.receivedOn]), skip),
+    insert("receipt_lines", ["receipt_id", "po_line_no", "quantity"], data.receiptLines.filter((g) => data.receipts.some((r) => r.id === g.receiptId && pos.has(r.poId))).map((g) => [g.receiptId, g.poLineNo, g.quantity]), skip),
+    insert("invoices", ["id", "vendor_id", "vendor_invoice_number", "po_id", "invoice_date", "due_date", "total_cents", "status", "remit_bank_last4", "document_path"], data.invoices.filter((i) => pool.has(i.id)).map((i) => [i.id, i.vendorId, i.vendorInvoiceNumber, i.poId, i.invoiceDate, i.dueDate, i.totalCents, i.status, i.remitBankLast4, i.documentPath]), skip),
+    insert("invoice_lines", ["invoice_id", "line_no", "po_line_no", "item_id", "description", "quantity", "uom", "unit_price_cents"], data.invoiceLines.filter((l) => pool.has(l.invoiceId)).map((l) => [l.invoiceId, l.lineNo, l.poLineNo, l.itemId, l.description, l.quantity, l.uom, l.unitPriceCents]), skip),
+    "RESET ROLE;",
+    "COMMIT;",
+    "",
+  ].join("\n");
 }
 
 /** The whole ERP as one SQL script: schema, grants and data, in a single transaction. */

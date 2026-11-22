@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   DEMO_INVOICE_ID,
+  DEMO_POOL_SIZE,
+  demoPoolSql,
+  isDemoPoolId,
   documents,
   generateErp,
   HIDDEN_INSTRUCTION,
@@ -123,12 +126,41 @@ describe("synthetic ERP generator", () => {
     expect(sql).not.toMatch(/expectedAction|accept_uom_conversion|hidden_instructions/);
   });
 
-  it("seed grants erp_demo what resetting the demo invoice needs", () => {
+  it("seed grants erp_demo only what raising a demo-pool exception needs", () => {
     const sql = seedSql(data);
     expect(sql).toContain("GRANT SELECT ON ALL TABLES IN SCHEMA erp TO erp_demo");
     expect(sql).toContain("GRANT UPDATE (status) ON erp.invoices, erp.exceptions TO erp_demo");
-    expect(sql).toContain("GRANT DELETE ON erp.resolutions, erp.outbox TO erp_demo");
+    expect(sql).toContain("GRANT INSERT ON erp.exceptions TO erp_demo");
+    expect(sql).not.toMatch(/GRANT DELETE ON [^;]* TO erp_demo/);
     expect(sql).not.toContain("GRANT INSERT ON erp.invoices");
+  });
+
+  it("seeds a demo pool: distinct copies of the demo invoice, received, with no exception or label", () => {
+    const pool = data.invoices.filter((i) => isDemoPoolId(i.id));
+    const demo = data.invoices.find((i) => i.id === DEMO_INVOICE_ID)!;
+    expect(pool).toHaveLength(DEMO_POOL_SIZE);
+    expect(pool[0]!.id).toBe("INV-20931-D2");
+    for (const inv of pool) {
+      expect(inv).toMatchObject({ vendorId: demo.vendorId, totalCents: demo.totalCents, status: "received", documentPath: `invoices/${inv.id}.pdf` });
+      expect(inv.poId).not.toBe(demo.poId);
+      expect(data.receipts.some((g) => g.poId === inv.poId)).toBe(true);
+      expect(data.exceptions.some((e) => e.invoiceId === inv.id) || data.labels.some((l) => l.invoiceId === inv.id)).toBe(false);
+    }
+    const numbers = [demo, ...pool].map((i) => i.vendorInvoiceNumber);
+    expect(new Set(numbers).size).toBe(numbers.length);
+    expect(new Set(pool.map((i) => i.poId)).size).toBe(pool.length);
+    // The pool is built without the PRNG: the rest of the ERP matches a generation that has no pool.
+    expect(data.exceptions.every((e) => !isDemoPoolId(e.invoiceId))).toBe(true);
+    const top = demoPoolSql(data);
+    expect(top).toContain("INV-20931-D2");
+    expect(top).toContain("ON CONFLICT DO NOTHING");
+    expect(top).not.toContain("DROP SCHEMA");
+  });
+
+  it("a demo-pool invoice and its exception are valid workflow input", async () => {
+    const { ResolveInputSchema } = await import("../dist/schemas.js");
+    expect(ResolveInputSchema.safeParse({ invoiceId: "INV-20931-D2", exceptionId: "EX-3000-D2" }).success).toBe(true);
+    expect(ResolveInputSchema.safeParse({ invoiceId: "INV-20931-X2", exceptionId: "EX-3000" }).success).toBe(false);
   });
 });
 

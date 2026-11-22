@@ -13,7 +13,7 @@ export interface MatchServerDeps {
 const json = (value: object) => ({ content: [{ type: "text" as const, text: JSON.stringify(value) }], structuredContent: value as Record<string, unknown> });
 const fail = (message: string) => ({ content: [{ type: "text" as const, text: message }], isError: true });
 
-const invoiceId = z.string().regex(/^INV-\d+$/).describe("ERP invoice id, for example INV-20931");
+const invoiceId = z.string().regex(/^INV-\d+(-D\d+)?$/).describe("ERP invoice id, for example INV-20931");
 const toleranceArgs = {
   price_tolerance_pct: z.number().min(0).max(100).optional().describe("Price tolerance as a percentage of the PO line amount; the lower of this and the cents limit applies. Defaults to the server's setting"),
   price_tolerance_cents: z.number().int().min(0).optional().describe("Price tolerance in cents. Defaults to the server's setting"),

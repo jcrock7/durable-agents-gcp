@@ -31,7 +31,7 @@ COPY --from=build /out /app
 COPY --from=build /generated/docs /docs
 # The matching ERP seed, outside the store (no tool can read it). The apply scripts load it into
 # Postgres with "kubectl exec deploy/mcp-docs -- cat /seed/seed.sql". Eval labels are not copied.
-COPY --from=build /generated/seed.sql /seed/seed.sql
+COPY --from=build /generated/seed.sql /generated/demo-pool.sql /seed/
 USER 1000:1000
 EXPOSE 8080
 CMD ["node", "dist/main.js"]

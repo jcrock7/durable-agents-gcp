@@ -5,9 +5,10 @@ The portfolio is one agent per reusable pattern ([ADR-0019](../docs/adr/0019-pat
 | Industry | Agents | Status |
 |---|---|---|
 | [general](general/) | Industry-neutral agents: [research-summarize](general/research-summarize/) (built), [invoice-exception-resolver](general/invoice-exception-resolver/) (designed, next to build), `audit-evidence-collector` | Built / designed / planned |
-| [financial-services](financial-services/) | Five example applications of the patterns, with business cases ([ADR-0017](../docs/adr/0017-prototype-agent-portfolio.md)) | Examples, not scheduled |
+| [financial-services](financial-services/) | Four example applications of the patterns, with business cases ([ADR-0017](../docs/adr/0017-prototype-agent-portfolio.md)) | Examples, not scheduled |
 | [manufacturing](manufacturing/) | How the five patterns carry over to production, quality, maintenance and supply chain | Pattern notes only |
 | [healthcare](healthcare/) | How the five patterns carry over to provider, payer and life-sciences operations | Pattern notes only |
+| [platform-engineering](platform-engineering/) | Agents that run and improve this platform and its delivery process: [agent-fleet-ops](platform-engineering/agent-fleet-ops/), [agent-improver](platform-engineering/agent-improver/), [delivery-metrics-advisor](platform-engineering/delivery-metrics-advisor/) ([ADR-0022](../docs/adr/0022-platform-engineering-agents.md)) | Concepts |
 | [technology](technology/) | `cve-remediator`, `finops-cost-sentinel`, `incident-commander` | Planned |
 
 All agents use synthetic or public data only. To add an industry, create `agents/<industry>/` with a README listing its agents (copy [financial-services/README.md](financial-services/README.md)).

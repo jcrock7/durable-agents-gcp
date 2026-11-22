@@ -1,6 +1,6 @@
 // Turns one /live response into what the Live Run view draws: node states and badges, the agent
 // feed, and header figures. Pure, so live polling and replay share it (and tests drive it).
-import type { EngineEvent, LiveResponse, LiveToolCall, PendingActivity } from "../api.js";
+import { plain, sourceLabel, type EngineEvent, type LiveResponse, type LiveToolCall, type PendingActivity } from "../api.js";
 import { allNodes, nodeForActivity, nodeForTimeline, toolPhrase, type LiveGraph } from "./graphs.js";
 
 export type NodeStatus = "pending" | "now" | "done" | "error" | "skipped";
@@ -139,7 +139,8 @@ export function reduceLive(g: LiveGraph, res: LiveResponse, now: number): LiveVi
   const feed: FeedItem[] = [];
   timeline.forEach((e, i) => {
     const node = nodeForTimeline(g, e.name);
-    let how = e.narration ? e.detail : undefined;
+    // The recorded detail, in words: snake_case codes and bare amounts are rewritten by plain().
+    let how = e.narration && e.detail ? plain(e.detail) : undefined;
     if (node?.usage) {
       const k = usageSeen.get(node.id) ?? 0;
       const u = usage.filter((x) => node.usage!.includes(x.step))[k];
@@ -153,7 +154,7 @@ export function reduceLive(g: LiveGraph, res: LiveResponse, now: number): LiveVi
   for (const { call, node, pending } of allCalls) {
     if (call.caller !== "model") continue;
     const evidence = state?.evidence?.find((x) => x.source === call.ref && sameArgs(x.args, call.args))?.excerpt;
-    const how = [`${call.ref} ${call.durationMs}ms`, call.replayed ? "replayed after failover" : "", call.outcome !== "ok" ? call.outcome : ""].filter(Boolean).join(" · ");
+    const how = [`${sourceLabel(call.ref)}, ${call.durationMs} ms`, call.replayed ? "replayed after failover" : "", call.outcome !== "ok" ? call.outcome : ""].filter(Boolean).join(" · ");
     feed.push({ key: `c${call.id}`, at: call.at, node, step: label(node, "Tool"), say: toolPhrase(call.ref, call.args), how, ...(evidence ? { evidence } : {}), ...(pending ? { pending: true as const } : {}) });
   }
   feed.sort((a, b) => a.at.localeCompare(b.at));

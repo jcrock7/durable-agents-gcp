@@ -211,7 +211,9 @@ BEGIN
     GRANT USAGE ON SCHEMA erp TO erp_demo;
     GRANT SELECT ON ALL TABLES IN SCHEMA erp TO erp_demo;
     GRANT UPDATE (status) ON erp.invoices, erp.exceptions TO erp_demo;
-    GRANT DELETE ON erp.resolutions, erp.outbox TO erp_demo;
+    GRANT INSERT ON erp.exceptions TO erp_demo;
+    -- Sample runs once reset one invoice by deleting what earlier runs posted; they now take the next demo-pool invoice.
+    REVOKE DELETE ON erp.resolutions, erp.outbox FROM erp_demo;
   END IF;
 END $$;
 SQL
@@ -228,6 +230,8 @@ load_erp() {
   if [[ "$loaded" == "t" && "${1:-}" != "force" ]]; then
     log "synthetic ERP already loaded (scripts/local/erp-load.sh reloads it)"
     grant_erp_demo "$primary"
+    # The demo-pool invoices (sample runs), for an ERP loaded before the pool existed. Idempotent.
+    MSYS_NO_PATHCONV=1 kubectl -n "$NS" exec deploy/mcp-docs -c docs -- cat /seed/demo-pool.sql       | kubectl -n "$NS" exec -i "$primary" -c postgres -- psql -q -v ON_ERROR_STOP=1 -d erp >/dev/null
     return 0
   fi
   log "loading the synthetic ERP into database erp"

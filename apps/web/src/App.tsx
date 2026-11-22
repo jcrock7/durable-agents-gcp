@@ -6,7 +6,9 @@ import { Overview, showHealth } from "./Overview.js";
 import { LiveRun } from "./live/LiveRun.js";
 import { caseHash, parseHash, type Route } from "./routes.js";
 import { Sidebar } from "./Sidebar.js";
+import { DOCS } from "./docs.js";
 import { Person } from "./icons.js";
+import { Glossary } from "./Glossary.js";
 
 const store = {
   get: (k: string) => {
@@ -45,6 +47,11 @@ export function App() {
   const [collapsed, setCollapsed] = useState(() => store.get("sidebar") === "collapsed");
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const chipRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // The open case's reference (INV-…), reported by the case page; the workflow id is never shown as its name.
+  const [caseRef, setCaseRef] = useState<{ workflowId: string; ref: string }>();
+  const onCaseRef = useCallback((workflowId: string, ref: string) => setCaseRef({ workflowId, ref }), []);
 
   useEffect(() => {
     const onHash = () => {
@@ -63,8 +70,14 @@ export function App() {
   }, []);
   useEffect(() => {
     if (!menu) return;
+    // Opening moves focus into the panel; Escape closes it and returns focus to the button.
+    panelRef.current?.querySelector<HTMLElement>("button, a")?.focus();
     const close = (e: Event) => {
-      if (e instanceof KeyboardEvent ? e.key === "Escape" : !menuRef.current?.contains(e.target as Node)) setMenu(false);
+      if (e instanceof KeyboardEvent) {
+        if (e.key !== "Escape") return;
+        setMenu(false);
+        chipRef.current?.focus();
+      } else if (!menuRef.current?.contains(e.target as Node)) setMenu(false);
     };
     addEventListener("mousedown", close);
     addEventListener("keydown", close);
@@ -79,8 +92,9 @@ export function App() {
     location.hash = hash;
   }, []);
 
+  const openRef = route.case && caseRef?.workflowId === route.case ? caseRef.ref : undefined;
   const pageName =
-    route.view === "overview" ? "Overview" : route.view === "cases" ? "All Cases" : route.view === "needs" ? "Needs Decision" : route.case ? route.case.toUpperCase() : ((agents.data ?? []).find((a) => a.id === route.agent)?.name ?? "Agent");
+    route.view === "overview" ? "Overview" : route.view === "cases" ? "All Cases" : route.view === "needs" ? "Needs Decision" : route.case ? (openRef ? `Case ${openRef}` : "Case") : ((agents.data ?? []).find((a) => a.id === route.agent)?.name ?? "Agent");
   useEffect(() => {
     document.title = `${pageName} · Agent Operations`;
   }, [pageName]);
@@ -90,14 +104,16 @@ export function App() {
   const agent = route.view === "agent" ? list.find((a) => a.id === route.agent) : undefined;
   const onCase = useCallback((id: string | null) => agent && nav(`#/agent/${agent.id}${id ? `/case/${id}` : ""}`), [agent, nav]);
   const user = me.data?.user ?? "…";
+  // Links, not buttons: a crumb opens in a new tab like any link.
   const crumb = (label: string, hash?: string) =>
     hash ? (
-      <button type="button" className="link-btn" style={{ fontWeight: 400, color: "inherit" }} onClick={() => nav(hash)}>
+      <a className="crumb" href={hash}>
         {label}
-      </button>
+      </a>
     ) : (
-      <b>{label}</b>
+      <b aria-current="page">{label}</b>
     );
+  const live = route.view === "agent" && Boolean(route.case && route.live);
 
   return (
     <div className="app" data-theme={theme}>
@@ -105,7 +121,7 @@ export function App() {
         agents={list}
         view={route.view}
         selected={agent?.id ?? ""}
-        collapsed={collapsed}
+        collapsed={collapsed || live}
         needPerson={list.reduce((s, a) => s + a.needsPerson, 0)}
         platform={mission.data?.platform}
         onToggle={() => {
@@ -115,6 +131,17 @@ export function App() {
         onNav={nav}
       />
       <div className="main">
+        <a
+          className="skip"
+          href="#content"
+          onClick={(e) => {
+            // The router uses the hash, so move focus without changing it.
+            e.preventDefault();
+            document.getElementById("content")?.focus();
+          }}
+        >
+          Skip to Main Content
+        </a>
         <header className="topbar">
           <nav aria-label="Breadcrumb" className="crumbs">
             {route.view === "overview" && crumb("Overview")}
@@ -126,19 +153,19 @@ export function App() {
                 {route.case ? (
                   <>
                     {" "}
-                    <span aria-hidden="true">/</span> {crumb(route.case.toUpperCase())}
+                    <span aria-hidden="true">/</span> {crumb(openRef ? `Case ${openRef}` : "Case")}
                   </>
                 ) : null}
               </>
             )}
           </nav>
           <div className="menu-wrap" ref={menuRef}>
-            <button type="button" className="user-chip" aria-haspopup="menu" aria-expanded={menu} aria-label={`Signed in as ${user}. Profile and settings`} onClick={() => setMenu(!menu)}>
+            <button ref={chipRef} type="button" className="user-chip" aria-expanded={menu} aria-controls="user-panel" aria-label={`Signed in as ${user}. Profile and settings`} onClick={() => setMenu(!menu)}>
               <Person />
-              {user}
+              <span className="user-name">{user}</span>
             </button>
             {menu && (
-              <div className="menu" role="menu">
+              <div className="menu" id="user-panel" ref={panelRef} role="group" aria-label="Profile and settings">
                 <div className="menu-id">
                   <span className="lab">Signed In As</span>
                   <b>{user}</b>
@@ -165,7 +192,7 @@ export function App() {
                   </div>
                 </div>
                 {me.data?.source === "iap" && (
-                  <a className="menu-link" role="menuitem" href="/_gcp_iap/clear_login_cookie">
+                  <a className="menu-link" href="/_gcp_iap/clear_login_cookie">
                     Sign Out
                   </a>
                 )}
@@ -176,9 +203,10 @@ export function App() {
 
         {agents.error && !agents.data && (
           <div className="error" style={{ margin: "20px 28px 0" }}>
-            Cannot reach the portal API: {agents.error}
+            {agents.error}
           </div>
         )}
+        <div id="content" tabIndex={-1} className="content">
         {route.view === "overview" && (
           <main className="page">
             <h1 className="sr">Overview</h1>
@@ -188,10 +216,12 @@ export function App() {
         {(route.view === "cases" || route.view === "needs") && (
           <main className="page">
             <h1 className="sr">{pageName}</h1>
-            <CaseTable key={route.view} agents={list} initial={route.view === "needs" ? "needs" : "open"} onOpen={(c) => nav(`#/agent/${c.agentId}/case/${c.workflowId}`)} />
+            <CaseTable key={route.view} agents={list} initial={route.view === "needs" ? "needs" : "open"} />
           </main>
         )}
-        {route.view === "agent" && agent && <AgentView key={agent.id} agent={agent} me={user} demoControls={me.data?.demoControls ?? false} caseId={route.case ?? null} onCase={onCase} onNav={nav} />}
+        {route.view === "agent" && agent && (
+          <AgentView key={agent.id} agent={agent} me={user} demoControls={me.data?.demoControls ?? false} temporalUiUrl={me.data?.temporalUiUrl} caseId={route.case ?? null} onCase={onCase} onNav={nav} onCaseRef={onCaseRef} />
+        )}
         {route.view === "agent" && !agent && agents.data && (
           <div className="page">
             <div className="panel empty">No agent called “{route.agent}”.</div>
@@ -203,6 +233,7 @@ export function App() {
             key={route.case}
             agentId={route.agent!}
             agentName={agent?.name}
+            schedule={agent?.schedule}
             workflowId={route.case}
             demoControls={me.data?.demoControls ?? false}
             temporalUiUrl={me.data?.temporalUiUrl}
@@ -210,9 +241,19 @@ export function App() {
           />
         )}
 
+        </div>
         <footer className="site-foot">
           <span>This site uses synthetic data.</span>
-          <span>Agent Operations</span>
+          <span className="foot-links">
+            <a href={DOCS.architecture} target="_blank" rel="noreferrer">
+              Architecture Brief ↗
+            </a>
+            <a href={DOCS.adrs} target="_blank" rel="noreferrer">
+              Decision Records ↗
+            </a>
+            <Glossary />
+            <span>Agent Operations</span>
+          </span>
         </footer>
       </div>
     </div>

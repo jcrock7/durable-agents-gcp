@@ -23,7 +23,7 @@ Success: an executive can follow an agent's work on one case without help and tr
 
 ## Positioning
 
-A working reference, not a mock-up. Every case, step, cost and rule stop on screen comes from a real workflow run against the platform (Temporal for durability, a single model gateway for budgets and routing, deterministic routing rules and a human approval gate before any write). The same screen serves the business story and the technical proof.
+A working reference, not a mock-up. Every case, step, cost and rule stop on screen comes from a real workflow run against the platform (Temporal for durability, a single model gateway for budgets and routing, deterministic routing rules and a human approval gate before any write the rules do not permit). The same screen serves the business story and the technical proof.
 
 ## Operating Context
 
@@ -37,11 +37,16 @@ A working reference, not a mock-up. Every case, step, cost and rule stop on scre
 
 Confirmed functionality:
 
-- Overview: decisions waiting, key figures, business figures from real cases, where cases ended up, agents, rule stops, Agent Health.
-- Case queue: Needs Decision and All Cases, with search, sort and paging.
-- Case page: decision first, step strip with drill-down, recommendation with cited evidence, policy text for the version the run used, policy-fit verdict, options weighed, audit trail.
-- Decisions: approve, send back to the agent with feedback, escalate to a specialist with a note.
-- Agent pages with settings, evals, budget; roadmap agent pages.
+- Overview: decisions waiting, then where a rule stopped an agent, key figures, business figures from real cases (rates only from 10 closed cases; counts below that) with why each closed case needed a person (policy, risk or evidence, from the recorded routing rules), where cases ended up, agents, Agent Health.
+- Case queue: Needs Decision and All Cases, with search, sort and paging; the view is kept in the URL, and every case opens as a link.
+- Case page: decision first, with the time left to decide and what happens if nobody does, step strip with drill-down, recommendation with cited evidence, policy text for the version the run used, policy-fit verdict, options weighed, audit trail.
+- Decisions: approve (a reason is required, and enforced by the workflow, when approving against the policy), send back to the agent with feedback, escalate to a specialist with a note; keyboard shortcuts, and a Next Decision link once a case is decided.
+- Every ERP write on a case page names what allowed it: the person who approved, or the workflow rule.
+- Agent pages with settings (model tiers, approval line, budget, guardrails), evals (rate, case count and a link to the results), budget; roadmap agent pages.
+- Research cases titled by their question, with source coverage (cited, not cited, marked unrelated by the agent), recorded model cost and a deadline.
+- Approvals against the policy are marked as overrides on the case, in the queue and on the Overview.
+- Demo controls (local and demo deployments only): Run a Sample Invoice works the next demo-pool invoice (INV-20931-D2, -D3, …), a seeded copy of the demo invoice with its own PO, goods receipt and PDF, so every sample is a distinct case and nothing an earlier run posted is removed; Start a Research Brief starts the research agent on a typed question.
+- A glossary of the portal's terms on every page.
 
 Constraints:
 
@@ -59,7 +64,7 @@ Undecided:
 
 ## Brand Commitments
 
-- **Human approves writes.** Nothing an agent proposes changes a system of record until a person approves it, and the page always states what approving, sending back or escalating will do.
+- **A person approves writes, or a published rule does.** Nothing an agent proposes changes a system of record unless a person approves it or a published workflow rule permits it, and the case page names which for every write. Holding an invoice to wait for a goods receipt needs a person. Rules permit three kinds of write without one: a protective hold when a case ends with a specialist (blocked, escalated or expired), so the invoice is not paid while a person takes over; a resolution, and its message, that no approval rule sends to a person (under the approval line, not an action that always needs a person, no policy conflict, valid citations); and clearing an invoice that matches on re-check. The page always states what approving, sending back or escalating will do.
 - **No invented figures.** Every number comes from a real run or is labelled as configured. Synthetic data is disclosed on every page.
 - **Plain business language.** Labels and explanations are written for finance and operations leaders; technical detail sits behind a drill-down, where it must be exact enough for a technical leader.
 

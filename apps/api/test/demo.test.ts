@@ -31,7 +31,7 @@ const kubernetes: KubernetesSource = {
     pods = pods.filter((p) => p.name !== name);
   }),
 };
-const erp: ErpDemoSource = { resetException: vi.fn(async (invoiceId: string) => ({ invoiceId, exceptionId: "EX-3000" })) };
+const erp: ErpDemoSource = { raiseNextSample: vi.fn(async () => ({ invoiceId: "INV-20931-D2", exceptionId: "EX-3000-D2" })) };
 
 const on = buildApp({ temporal, litellm, kubernetes, demo: { erp } });
 const off = buildApp({ temporal, litellm, kubernetes });
@@ -92,21 +92,39 @@ describe("demo controls", () => {
     expect(kubernetes.deletePod).not.toHaveBeenCalled();
   });
 
-  it("sample-case resets the demo invoice and starts a case with a fresh workflow id", async () => {
+  it("sample-case raises the next demo-pool invoice and starts a case on it", async () => {
     const res = await on.inject({ method: "POST", url: "/api/demo/sample-case" });
     expect(res.statusCode).toBe(200);
     const { workflowId } = res.json();
-    expect(workflowId).toMatch(/^inv-20931-demo-[a-z0-9]+$/);
-    expect(erp.resetException).toHaveBeenCalledWith("INV-20931");
-    expect(temporal.start).toHaveBeenCalledWith("resolveInvoiceException", "invoice-exception-resolver", workflowId, { invoiceId: "INV-20931", exceptionId: "EX-3000" });
+    expect(workflowId).toMatch(/^inv-20931-demo-d2-[a-z0-9]+$/);
+    expect(erp.raiseNextSample).toHaveBeenCalled();
+    expect(temporal.start).toHaveBeenCalledWith("resolveInvoiceException", "invoice-exception-resolver", workflowId, { invoiceId: "INV-20931-D2", exceptionId: "EX-3000-D2" });
+  });
+
+  it("research-brief starts the research workflow with the question, and refuses a short one", async () => {
+    const res = await on.inject({ method: "POST", url: "/api/demo/research-brief", payload: { question: "  How do durable workflows survive a crash?  " } });
+    expect(res.statusCode).toBe(200);
+    const { workflowId } = res.json();
+    expect(workflowId).toMatch(/^research-[a-z0-9]+$/);
+    expect(temporal.start).toHaveBeenCalledWith("researchAndSummarize", "research-summarize", workflowId, { question: "How do durable workflows survive a crash?" });
+    expect((await on.inject({ method: "POST", url: "/api/demo/research-brief", payload: { question: "why" } })).statusCode).toBe(400);
+    expect((await off.inject({ method: "POST", url: "/api/demo/research-brief", payload: { question: "How do durable workflows survive a crash?" } })).statusCode).toBe(404);
+  });
+
+  it("sample-case says so when every demo invoice has been used", async () => {
+    vi.mocked(erp.raiseNextSample).mockResolvedValueOnce(undefined);
+    const res = await on.inject({ method: "POST", url: "/api/demo/sample-case" });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toMatch(/every demo invoice has been used/);
+    expect(temporal.start).not.toHaveBeenCalled();
   });
 
   it("a sample-case press while one is running opens the running case instead of starting another", async () => {
     running = [{ workflowId: "inv-20931-demo-abc", runId: "r", type: "resolveInvoiceException", status: "RUNNING", startTime: "2026-11-20T00:00:00Z" }];
-    vi.mocked(erp.resetException).mockClear();
+    vi.mocked(erp.raiseNextSample).mockClear();
     const res = await on.inject({ method: "POST", url: "/api/demo/sample-case" });
     expect(res.json()).toEqual({ workflowId: "inv-20931-demo-abc" });
-    expect(erp.resetException).not.toHaveBeenCalled();
+    expect(erp.raiseNextSample).not.toHaveBeenCalled();
     expect(temporal.start).not.toHaveBeenCalled();
   });
 });

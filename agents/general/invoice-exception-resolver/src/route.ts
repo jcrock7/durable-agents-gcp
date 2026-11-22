@@ -45,7 +45,12 @@ export function policyFit(proposal: Pick<Proposal, "action">, match: MatchResult
 export interface RouteOptions {
   /** Let a policy conflict send the case to a person. Off only when replaying runs that started before the rule existed. */
   enforcePolicyFit?: boolean;
+  /** Holding the invoice to wait for a receipt is a write, so a person approves it first. Off only when replaying runs that started before the rule existed. */
+  holdNeedsPerson?: boolean;
 }
+
+/** Why a wait-path proposal goes to a person. */
+export const HOLD_NEEDS_PERSON = "putting the invoice on hold to wait for a goods receipt needs a person";
 
 export interface RouteInput {
   proposal: Proposal;
@@ -54,7 +59,7 @@ export interface RouteInput {
   citationsValid: boolean;
 }
 
-export function route({ proposal, adjustment, match, citationsValid }: RouteInput, policy: Policy = agentConfig, { enforcePolicyFit = true }: RouteOptions = {}): RouteDecision {
+export function route({ proposal, adjustment, match, citationsValid }: RouteInput, policy: Policy = agentConfig, { enforcePolicyFit = true, holdNeedsPerson = true }: RouteOptions = {}): RouteDecision {
   const fraudSignals = match.findings.filter((f) => f.severity === "fraud_signal").map((f) => f.message);
   if (proposal.fraudFlag || fraudSignals.length > 0) {
     return {
@@ -81,6 +86,7 @@ export function route({ proposal, adjustment, match, citationsValid }: RouteInpu
   if (match.exceptionTypes.length > 0 && !match.exceptionTypes.includes(proposal.exceptionType)) {
     reasons.push(`classified as ${proposal.exceptionType}, but the match engine found ${match.exceptionTypes.join(", ")}`);
   }
+  if (holdNeedsPerson && PATHS[proposal.action].path === "wait") reasons.push(HOLD_NEEDS_PERSON);
   const fit = policyFit(proposal, match);
   if (fit && !fit.fits && enforcePolicyFit) reasons.push(`${proposal.action} does not fit the policy: ${fit.why}`);
   return { ...PATHS[proposal.action], needsPerson: reasons.length > 0, reasons, ...(fit ? { policyFit: fit } : {}) };

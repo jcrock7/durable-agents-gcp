@@ -8,7 +8,7 @@ import { Worker } from "@temporalio/worker";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Activities } from "../dist/activities.js";
 import { getCaseState, requestRecheck, submitReview } from "../dist/client.js";
-import type { CaseResult, CaseState, Finding, MatchResult, Proposal, QueueResult } from "../dist/index.js";
+import { HOLD_NEEDS_PERSON, type CaseResult, type CaseState, type Finding, type MatchResult, type Proposal, type QueueResult } from "../dist/index.js";
 
 // The real workflow code on Temporal's time-skipping test server, with activities mocked: no
 // models, no MCP servers. Days of waiting pass in milliseconds.
@@ -181,6 +181,8 @@ describe("resolveInvoiceException: routes", () => {
     });
     expect(final!.timeline.length).toBeGreaterThan(6);
     for (const e of final!.timeline) expect(e.narration, e.name).toMatch(/\S/);
+    // Narration is a step record, not a chatbot speaking: no first person.
+    for (const e of final!.timeline) expect(e.narration, e.name).not.toMatch(/\b(I|I'm|I'll|me|my|we)\b/);
     expect(final!.timeline.find((e) => e.name === "Read invoice PDF")?.narration).toBe("Read the invoice.");
   });
 
@@ -278,6 +280,22 @@ describe("resolveInvoiceException: routes", () => {
     expect(result.status).toBe("resolved");
   });
 
+  it("refuses an approval against the policy without a reason, and keeps the reason it is given", async () => {
+    const conflict = matchOf([finding("PRICE_VARIANCE", { amountCents: 128_400, details: { invoicedUnitPriceCents: 3967, poUnitPriceCents: 3365, contractPriceCents: 3365, contractSupportsInvoice: false } })], ["price_variance"]);
+    const acts = mockActivities({ matches: [conflict] });
+    let final: CaseState | undefined;
+    const result = await run(acts, async (handle) => {
+      const s = await awaitingReview(handle, 1);
+      expect(s.route?.policyFit).toMatchObject({ fits: false });
+      await expect(submitReview(handle, { approved: true, reviewer: "ap.lead" })).rejects.toThrow();
+      await expect(submitReview(handle, { approved: true, feedback: "  ", reviewer: "ap.lead" })).rejects.toThrow();
+      await submitReview(handle, { approved: true, feedback: "Buyer agreed the new price by phone", reviewer: "ap.lead" });
+      final = await waitFor(handle, (st) => st.stage === "done", "done");
+    });
+    expect(result).toMatchObject({ status: "resolved", reviewer: "ap.lead", humanTouches: 1 });
+    expect(final!.timeline.find((e) => e.name === "Approved")?.detail).toBe("ap.lead · reason: Buyer agreed the new price by phone");
+  });
+
   it("closes the case at once if the invoice already matches", async () => {
     const acts = mockActivities({ matches: [MATCHED] });
     const result = await run(acts);
@@ -292,7 +310,13 @@ describe("resolveInvoiceException: waiting for a receipt", () => {
   it("holds, re-checks daily, and resolves in the next round when the receipt is posted", async () => {
     // Round 1: no receipt (twice: the first match and the first daily check), then the receipt appears.
     const acts = mockActivities({ matches: [NO_RECEIPT, NO_RECEIPT, NO_RECEIPT, MATCHED], proposals: [waitProposal], amountCents: 0 });
-    const result = await run(acts);
+    // The hold is a write, so a person approves it before the invoice is held.
+    const result = await run(acts, async (handle) => {
+      const s = await awaitingReview(handle, 1);
+      expect(s.route?.reasons).toEqual([HOLD_NEEDS_PERSON]);
+      expect(acts.setHold).not.toHaveBeenCalled();
+      await submitReview(handle, { approved: true, reviewer: "ap.clerk" });
+    });
     expect(result).toMatchObject({ status: "resolved", rounds: 2, reasons: ["the invoice now matches"] });
     expect(acts.setHold).toHaveBeenCalledTimes(1);
     expect(acts.readInvoice).toHaveBeenCalledTimes(1);
@@ -301,6 +325,8 @@ describe("resolveInvoiceException: waiting for a receipt", () => {
   it("re-checks at once on a recheck signal", async () => {
     const acts = mockActivities({ matches: [NO_RECEIPT, MATCHED], proposals: [waitProposal], amountCents: 0 });
     const result = await run(acts, async (handle) => {
+      await awaitingReview(handle, 1);
+      await submitReview(handle, { approved: true, reviewer: "ap.clerk" });
       await waitFor(handle, (s) => s.stage === "waiting", "the wait");
       await requestRecheck(handle, "receipt GR-6001 posted");
     });
@@ -310,7 +336,12 @@ describe("resolveInvoiceException: waiting for a receipt", () => {
 
   it("asks receiving to post the receipt, reminds on days 3 and 7, and escalates on day 10", async () => {
     const acts = mockActivities({ matches: [NO_RECEIPT], proposals: [proposalOf({ exceptionType: "no_receipt", action: "request_receipt_entry", rationale: "Delivered and signed for [E3]." })], amountCents: 0 });
-    const result = await run(acts);
+    const result = await run(acts, async (handle) => {
+      await awaitingReview(handle, 1);
+      // Nothing is written, and no message goes out, before the approval.
+      expect(acts.queueMessage).not.toHaveBeenCalled();
+      await submitReview(handle, { approved: true, reviewer: "ap.clerk" });
+    });
     expect(result).toMatchObject({ status: "escalated", reasons: ["no receipt after 10 days"] });
     // The request, then two reminders to the same address.
     expect(acts.queueMessage).toHaveBeenCalledTimes(3);

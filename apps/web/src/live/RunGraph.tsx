@@ -42,7 +42,7 @@ export function RunGraph({ graph, view, filter, onFilter, onBadge }: { graph: Li
     <section className="panel live-panel" aria-label="Workflow">
       <div className="live-h">
         <span>Workflow</span>
-        <span>{view.header.worker ? `Worker ${view.header.worker}` : ""}</span>
+        <span className="live-worker" title={view.header.worker}>{view.header.worker ? `Running on worker ${view.header.worker}` : ""}</span>
       </div>
       <div className="live-graph">
         {graph.nodes.map((n, i) => (

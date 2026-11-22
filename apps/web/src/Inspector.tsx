@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { titleCase, usd, type AnyState } from "./api.js";
+import { useTabs } from "./tabs.js";
 
 type Tab = "calls" | "skills" | "cost" | "guardrails";
 
@@ -18,17 +19,18 @@ export function Inspector({ state }: { state: AnyState }) {
     ["guardrails", "Guardrails"],
   ];
   const selected = calls[call];
+  const t = useTabs("audit", tabs.map(([id]) => id), tab, setTab);
 
   return (
     <div className="content">
-      <div role="tablist" aria-label="Inspector" className="tabs" style={{ marginBottom: 14 }}>
+      <div {...t.list} aria-label="Audit trail" className="tabs" style={{ marginBottom: 14 }}>
         {tabs.map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} className={`tab${tab === id ? " on" : ""}`} onClick={() => setTab(id)}>
+          <button key={id} type="button" {...t.tab(id)} className={`tab${tab === id ? " on" : ""}`}>
             {label}
           </button>
         ))}
       </div>
-      <div>
+      <div {...t.panel}>
         {tab === "calls" &&
           (calls.length === 0 ? (
             <p className="muted">No tool calls yet.</p>
@@ -36,7 +38,7 @@ export function Inspector({ state }: { state: AnyState }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ border: "1px solid var(--border)", borderRadius: 4, maxHeight: 320, overflow: "auto" }}>
                 {calls.map((c, i) => (
-                  <button key={i} type="button" className={`call${i === call ? " on" : ""}`} onClick={() => setCall(i)}>
+                  <button key={i} type="button" className={`call${i === call ? " on" : ""}`} aria-pressed={i === call} onClick={() => setCall(i)}>
                     <span className="mono" style={{ fontSize: 13, flex: "1 1 auto", minWidth: 0, overflowWrap: "anywhere" }}>
                       {c.ref}
                     </span>
@@ -70,7 +72,7 @@ export function Inspector({ state }: { state: AnyState }) {
                 </div>
               )}
               <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-                Arguments are recorded for every call; results are kept as sizes only.
+                Arguments are recorded for every call; the case keeps only the size of each result. Results the agent used as evidence are kept under Evidence (cut at a length limit), and what each step returned is in the run’s engine history: Replay Run, then Engine History.
               </p>
             </div>
           ))}

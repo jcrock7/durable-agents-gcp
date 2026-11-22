@@ -11,6 +11,10 @@
   --crit: #A8281F; --crit-bg: #FBE9E7;
   --idle: #454C55; --idle-bg: #F2F4F6; --idle-line: #D5D9DE;
   --side-bg: #161B22; --side-line: #2C333C; --side-sel: #2C333C;
+  --on-warn: #1B1200;
+  /* The rail stays dark in both themes, so its tokens are set once, here. */
+  --rail-ink: #FFFFFF; --rail-text: #C9D0D8; --rail-muted: #9CA3AF; --rail-control: #39414B;
+  --rail-ok: #6DD58C; --rail-idle: #9CA3AF; --rail-off: #4B5563; --rail-down: #F0958C;
   --scrim: rgba(13, 17, 23, 0.55);
   --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;

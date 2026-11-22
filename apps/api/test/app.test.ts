@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildApp, factsOf, parseSkill } from "../dist/app.js";
+import { buildApp, factsOf, parseSkill, summarize } from "../dist/app.js";
+import { AGENTS } from "../dist/registry.js";
 import type { KubernetesSource, LiteLLMSource, RunInfo, TemporalSource } from "../dist/sources.js";
 
 const now = new Date().toISOString();
@@ -45,6 +46,7 @@ const temporal: TemporalSource = {
 const litellm: LiteLLMSource = {
   keys: vi.fn(async () => [{ alias: "agent-invoice-exception-resolver", spend: 2.85, maxBudget: 3, resetsAt: null }]),
   healthy: vi.fn(async () => true),
+  models: vi.fn(async () => ({ fast: "vertex_ai/gemini-3.5-flash-lite", smart: "vertex_ai/gemini-3.5-pro" })),
 };
 const kubernetes: KubernetesSource = {
   deployments: vi.fn(async (names: string[]) => names.map((name) => ({ name, ready: 1, replicas: 1 }))),
@@ -163,9 +165,49 @@ describe("portal API", () => {
     expect((await app.inject({ url: "/api/me", headers: { "x-goog-authenticated-user-email": "accounts.google.com:a@b.c" } })).json()).toEqual({ user: "a@b.c", source: "iap", demoControls: false });
   });
 
-  it("computes business figures from the loaded cases", async () => {
+  it("computes business figures from the loaded cases, without a rate below the sample floor", async () => {
     const { value } = (await app.inject("/api/mission")).json();
-    expect(value).toMatchObject({ cases: 2, awaitingDecisionCents: 128_400, closed: 1, closedWithoutPerson: 1, medianSecondsToProposal: 12, manualCostPerCaseUsd: null });
+    expect(value).toMatchObject({ cases: 2, awaitingDecisionCents: 128_400, closed: 1, closedWithoutPerson: 0, medianSecondsToProposal: 12, manualCostPerCaseUsd: null });
+    // The closed case was stopped by a guardrail: it needed a person, and says why.
+    expect(value.whyPerson).toEqual([{ kind: "guardrail", group: "risk", label: "A guardrail stopped the run", cases: 1 }]);
+    expect(value).toMatchObject({ rateFloor: 10, closedWithoutPersonPct: null });
+  });
+
+  it("names the model behind each gateway alias", async () => {
+    const inv = (await app.inject("/api/agents")).json().find((a: { id: string }) => a.id === "invoice-exception-resolver");
+    expect(inv.modelTiers).toEqual([
+      { alias: "fast", model: "vertex_ai/gemini-3.5-flash-lite" },
+      { alias: "smart", model: "vertex_ai/gemini-3.5-pro" },
+    ]);
+  });
+
+  it("filters the case history to cases waiting on a person", async () => {
+    const needs = (await app.inject("/api/cases?needs=1")).json();
+    expect(needs.cases.map((c: { workflowId: string }) => c.workflowId)).toEqual(["inv-20931"]);
+  });
+
+  it("refuses an approval against the policy without a reason, before asking the workflow", async () => {
+    const state = states["inv-20931"] as Record<string, any>;
+    const route = state.route;
+    state.route = { ...route, policyFit: { fits: false, expected: "request_credit_memo", why: "above contract" } };
+    vi.mocked(temporal.update).mockClear();
+    try {
+      const bare = await app.inject({ method: "POST", url: "/api/cases/inv-20931/review", payload: { approved: true, feedback: "  " } });
+      expect(bare.statusCode).toBe(400);
+      expect(bare.json().error).toBe("a reason is required when approving against the policy");
+      expect(temporal.update).not.toHaveBeenCalled();
+      const given = await app.inject({ method: "POST", url: "/api/cases/inv-20931/review", payload: { approved: true, feedback: "Buyer agreed the price" } });
+      expect(given.statusCode).toBe(200);
+    } finally {
+      state.route = route;
+    }
+  });
+
+  it("returns the approval line as numbers for the case page", async () => {
+    expect((await app.inject("/api/cases/inv-20931")).json()).toMatchObject({ threshold: { amountCents: 128_400, lineCents: 100_000 }, writes: [], decision: { sentBack: 0 } });
+    const detail = (await app.inject("/api/cases/inv-20931")).json();
+    expect(detail.personReasons.map((r: { kind: string }) => r.kind)).toEqual(["always", "approval_line"]);
+    expect(detail.deadline).toMatchObject({ expiresAt: new Date(Date.parse(now) + 7 * 86_400_000).toISOString() });
   });
 
   it("builds Mission Control: health, figures, boundary events and servers", async () => {
@@ -175,5 +217,16 @@ describe("portal API", () => {
     const kinds = m.events.map((e: { kind: string }) => e.kind);
     expect(kinds).toEqual(expect.arrayContaining(["Guardrail", "Allow-list", "Threshold", "Budget"]));
     expect(m.servers.map((s: { name: string }) => s.name)).toContain("mcp-match-engine");
+  });
+});
+
+describe("research case summary", () => {
+  const agent = AGENTS.find((a) => a.id === "research-summarize")!;
+  const run = { workflowId: "research-abc", runId: "r", type: "researchAndSummarize", status: "RUNNING", startTime: "2026-11-22T00:00:00Z" } as RunInfo;
+  it("is titled by its question, in capitals as a reference, with cost marked not recorded for runs that kept none", () => {
+    const old = summarize(agent, run, { stage: "awaiting_review", usage: [], draft: { summary: "x" }, draftVersion: 1 });
+    expect(old).toMatchObject({ ref: "RESEARCH-ABC", title: "Research question not recorded", costRecorded: false, needsPerson: true });
+    const fresh = summarize(agent, run, { stage: "awaiting_review", question: "Why?", usage: [{ costUsd: 0.002 }], draft: { summary: "x" }, draftVersion: 1 });
+    expect(fresh).toMatchObject({ title: "Why?", costRecorded: true, costUsd: 0.002 });
   });
 });

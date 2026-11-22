@@ -32,7 +32,16 @@ export async function researchAndSummarize(rawInput: ResearchInput): Promise<Res
   }
   const input = parsed.data;
   const { limits } = agentConfig;
-  const progress: Progress = { stage: "planning", queries: [], sources: [], draftVersion: 0, timeline: [] };
+  const progress: Progress = { stage: "planning", question: input.question, reviewTimeout: agentConfig.limits.reviewTimeout, queries: [], sources: [], draftVersion: 0, timeline: [], usage: [] };
+  // Results recorded before cost was kept are plain values; newer ones carry their usage. Both replay.
+  const track = (u: unknown) => {
+    if (u && typeof u === "object" && "costUsd" in u) progress.usage!.push(u as NonNullable<Progress["usage"]>[number]);
+  };
+  const toDraft = (d: Draft & { usage?: unknown }): Draft => {
+    track(d.usage);
+    const { usage: _usage, ...draft } = d;
+    return draft;
+  };
   const step = (name: string, detail = "", state: "done" | "now" = "done") => {
     const last = progress.timeline!.at(-1);
     if (last?.state === "now") last.state = "done";
@@ -58,7 +67,12 @@ export async function researchAndSummarize(rawInput: ResearchInput): Promise<Res
 
   try {
     // 1. Plan searches.
-    progress.queries = await planQueries({ question: input.question });
+    const planned: string[] | { queries: string[]; usage?: unknown } = await planQueries({ question: input.question });
+    if (Array.isArray(planned)) progress.queries = planned;
+    else {
+      progress.queries = planned.queries;
+      track(planned.usage);
+    }
     step("Plan searches", `${progress.queries.length} queries`);
 
     // 2. Search, in parallel, and pick distinct articles across queries.
@@ -84,7 +98,7 @@ export async function researchAndSummarize(rawInput: ResearchInput): Promise<Res
 
     // 4. Draft.
     progress.stage = "drafting";
-    let draft: Draft = await writeDraft({ question: input.question, sources });
+    let draft: Draft = toDraft(await writeDraft({ question: input.question, sources }));
     progress.draft = draft;
     progress.draftVersion = 1;
     step("Draft", "version 1");
@@ -109,11 +123,13 @@ export async function researchAndSummarize(rawInput: ResearchInput): Promise<Res
         return finish("rejected", { reviewer: decision.reviewer, reason: decision.feedback });
       }
       progress.stage = "revising";
-      draft = await writeDraft({
-        question: input.question,
-        sources,
-        revision: { draft, feedback: decision.feedback ?? "" },
-      });
+      draft = toDraft(
+        await writeDraft({
+          question: input.question,
+          sources,
+          revision: { draft, feedback: decision.feedback ?? "" },
+        }),
+      );
       progress.draft = draft;
       progress.draftVersion += 1;
       step("Revise draft", `version ${progress.draftVersion}`);

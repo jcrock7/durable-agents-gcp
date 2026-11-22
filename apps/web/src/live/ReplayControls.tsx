@@ -25,7 +25,8 @@ export function ReplayControls({ live }: { live: LiveHook }) {
         aria-label="Replay position"
       />
       <span className="muted">
-        {clock(live.position)} / {clock(live.duration)}
+        Replay {clock(live.position)} of {clock(live.duration)}
+        {live.realDuration > live.duration + 1000 ? ` · a ${secs(live.realDuration)} run, with waits over 10 sec played as 2 sec` : ""}
       </span>
       {live.waited && (
         <span className="live-wait">

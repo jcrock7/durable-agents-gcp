@@ -2,8 +2,6 @@ import { useState } from "react";
 import type { Agent, Mission } from "./api.js";
 import { Chevrons, Flag, List, Logo, Radar } from "./icons.js";
 
-const DOT: Record<Agent["status"], string> = { active: "#22C55E", needs_review: "#E39A1B", idle: "#9CA3AF", coming_soon: "#4B5563" };
-
 export type View = "overview" | "needs" | "cases" | "agent";
 
 const monogram = (name: string) =>
@@ -14,7 +12,7 @@ const monogram = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 
-/** Primary navigation: overview, the decision queue, all cases, then the agents. */
+/** Primary navigation: overview, the decision queue, all cases, then the agents. Every item is a link, so it opens in a new tab too. */
 export function Sidebar(props: {
   agents: Agent[];
   view: View;
@@ -32,28 +30,34 @@ export function Sidebar(props: {
   const down = (props.platform ?? []).filter((p) => p.ok === false);
   const healthTitle = (props.platform ?? []).map((p) => `${p.name}: ${p.ok === null ? "unknown" : p.ok ? "healthy" : "down"}`).join("\n");
   const text = collapsed ? "" : "hide-narrow";
+  // The phone layout shows the rail as a strip; these short names sit under its icons there.
+  const short = (label: string) => (
+    <span className="phone-label" aria-hidden="true">
+      {label}
+    </span>
+  );
 
   const agentRow = (a: Agent) => (
-    <button
+    <a
       key={a.id}
-      type="button"
+      href={`#/agent/${a.id}`}
       className={`nav-item${view === "agent" && a.id === selected ? " current" : ""}${a.built ? "" : " soon"}`}
       aria-current={view === "agent" && a.id === selected ? "page" : undefined}
-      aria-label={`${a.name}, ${a.built ? a.purpose : "on the roadmap"}${a.needsPerson ? `, ${a.needsPerson} need a decision` : ""}`}
+      aria-label={`${a.name}, ${a.built ? a.purpose : "on the roadmap"}${a.needsPerson ? `, ${a.needsPerson} ${a.needsPerson === 1 ? "decision" : "decisions"} waiting` : ""}`}
       title={`${a.name} · ${a.built ? a.purpose : "On the roadmap"}`}
-      onClick={() => props.onNav(`#/agent/${a.id}`)}
     >
       <span className="monogram" aria-hidden="true">
         {monogram(a.name)}
-        <span className="dot" style={{ background: DOT[a.status] }} />
+        <span className={`dot s-${a.status}`} />
       </span>
       {!collapsed && <span className={`grow ${text}`}>{a.name}</span>}
+      {short(a.name.split(/\s+/)[0]!)}
       {a.needsPerson > 0 && (
         <span className="nav-count" aria-hidden="true">
           {a.needsPerson}
         </span>
       )}
-    </button>
+    </a>
   );
 
   return (
@@ -70,23 +74,26 @@ export function Sidebar(props: {
         </button>
       </div>
 
-      <button type="button" className={`nav-item${view === "overview" ? " current" : ""}`} aria-current={view === "overview" ? "page" : undefined} title="Overview" onClick={() => props.onNav("#/overview")}>
+      <a href="#/overview" className={`nav-item${view === "overview" ? " current" : ""}`} aria-current={view === "overview" ? "page" : undefined} title="Overview">
         <Radar size={18} />
         {!collapsed && <span className={`grow ${text}`}>Overview</span>}
-      </button>
-      <button type="button" className={`nav-item${view === "needs" ? " current" : ""}`} aria-current={view === "needs" ? "page" : undefined} title="Needs Decision" aria-label={`Needs Decision${props.needPerson ? `, ${props.needPerson} waiting` : ""}`} onClick={() => props.onNav("#/cases/needs")}>
+        {short("Overview")}
+      </a>
+      <a href="#/cases/needs" className={`nav-item${view === "needs" ? " current" : ""}`} aria-current={view === "needs" ? "page" : undefined} title="Needs Decision" aria-label={`Needs Decision${props.needPerson ? `, ${props.needPerson} waiting` : ""}`}>
         <Flag />
         {!collapsed && <span className={`grow ${text}`}>Needs Decision</span>}
+        {short("Decide")}
         {props.needPerson > 0 && (
           <span className="nav-count" aria-hidden="true">
             {props.needPerson}
           </span>
         )}
-      </button>
-      <button type="button" className={`nav-item${view === "cases" ? " current" : ""}`} aria-current={view === "cases" ? "page" : undefined} title="All Cases" onClick={() => props.onNav("#/cases")}>
+      </a>
+      <a href="#/cases" className={`nav-item${view === "cases" ? " current" : ""}`} aria-current={view === "cases" ? "page" : undefined} title="All Cases">
         <List />
         {!collapsed && <span className={`grow ${text}`}>All Cases</span>}
-      </button>
+        {short("Cases")}
+      </a>
 
       {!collapsed && <div className={`side-label ${text}`}>Agents</div>}
       {live.map(agentRow)}
@@ -101,10 +108,23 @@ export function Sidebar(props: {
       )}
       {(roadmap || planned.some((a) => view === "agent" && a.id === selected)) && planned.map(agentRow)}
 
-      <button type="button" className="side-foot" title={healthTitle || "Agent Health"} onClick={() => props.onNav("#/overview/health")}>
-        <span className="health-dot" style={{ background: !props.platform ? "#9CA3AF" : down.length ? "#F97316" : "#22C55E" }} />
+      <a
+        href="#/overview/health"
+        className="side-foot"
+        title={healthTitle || "Agent Health"}
+        aria-label={`Agent Health${!props.platform ? "" : down.length ? `, ${down.length} down` : ", all healthy"}`}
+        onClick={(e) => {
+          // The same hash fires no hashchange: reopen the panel directly.
+          if (location.hash === "#/overview/health" && !e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            props.onNav("#/overview/health");
+          }
+        }}
+      >
+        <span className={`health-dot ${!props.platform ? "unknown" : down.length ? "down" : "ok"}`} aria-hidden="true" />
         {!collapsed && <span className={text}>Agent Health{down.length ? ` · ${down.length} down` : ""}</span>}
-      </button>
+        {short("Health")}
+      </a>
     </nav>
   );
 }

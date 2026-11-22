@@ -4,7 +4,7 @@ import type { LiveView } from "./reduce.js";
 import { offset } from "./format.js";
 import { plain, titleCase } from "../api.js";
 
-/** The agent explaining itself, one line per step and per tool call, newest at the bottom. */
+/** What the run did, one line per step and per tool call, newest at the bottom. Lines are step records, not a chat. */
 export function AgentFeed({ graph, view, filter, onFilter }: { graph: LiveGraph; view: LiveView; filter?: string; onFilter: (id?: string) => void }) {
   const items = filter ? view.feed.filter((f) => f.node === filter) : view.feed;
   const last = view.feed.at(-1)?.key;
@@ -29,7 +29,7 @@ export function AgentFeed({ graph, view, filter, onFilter }: { graph: LiveGraph;
             <span className="muted">{offset(f.at, view.startTime)}</span>
             <span className="live-tag">{titleCase(f.step)}</span>
             <div>
-              <div className={`say${view.running && f.key === last ? " typing" : ""}`}>{plain(f.say)}</div>
+              <div className="say">{plain(f.say)}</div>
               {f.how && <div className="how">{f.how}</div>}
               {f.evidence && (
                 <details className="live-ev">

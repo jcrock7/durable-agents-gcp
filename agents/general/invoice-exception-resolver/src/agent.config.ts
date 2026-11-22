@@ -46,6 +46,8 @@ export const agentConfig = {
     amountCents: 100_000,
     alwaysFor: ["accept_variance", "short_pay", "reject_duplicate"],
   },
+  /** How long a proposal waits for a reviewer before the case expires and goes to a specialist. */
+  review: { days: 7 },
   wait: { reminderDays: [3, 7], escalateDays: 10 },
   limits: { evidenceRounds: 4, rounds: 3 },
   queue: { maxParallel: 10 },

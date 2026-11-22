@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { agentConfig } from "@agents/invoice-exception-resolver";
-import { generateErp, type ErpData } from "@agents/invoice-exception-resolver/data";
+import { DEMO_INVOICE_ID, generateErp, isDemoPoolId, type ErpData } from "@agents/invoice-exception-resolver/data";
 import { checkDuplicate, computeAdjustment, normalizeInvoiceNumber, runMatch, type Action, type MatchInput } from "../dist/index.js";
 
 const data: ErpData = generateErp();
@@ -80,10 +80,20 @@ describe("match engine on every seeded exception", () => {
 describe("match engine on clean invoices", () => {
   it("matches every invoice that is not a seeded exception", () => {
     const exceptionIds = new Set(data.exceptions.map((e) => e.invoiceId));
-    const clean = data.invoices.filter((i) => !exceptionIds.has(i.id));
+    // Demo-pool invoices are copies of the demo price variance, raised when a sample run starts.
+    const clean = data.invoices.filter((i) => !exceptionIds.has(i.id) && !isDemoPoolId(i.id));
     expect(clean.length).toBeGreaterThan(800);
     const mismatched = clean.map((i) => runMatch(inputFor(i.id), tolerance)).filter((r) => r.status !== "matched");
     expect(mismatched.map((r) => `${r.invoiceId}: ${r.findings.map((f) => f.code).join(",")}`)).toEqual([]);
+  });
+
+  it("finds the demo price variance on every demo-pool invoice, and no duplicate of the demo", () => {
+    const demo = runMatch(inputFor(DEMO_INVOICE_ID), tolerance);
+    for (const inv of data.invoices.filter((i) => isDemoPoolId(i.id))) {
+      const r = runMatch(inputFor(inv.id), tolerance);
+      expect(r.exceptionTypes, inv.id).toEqual(demo.exceptionTypes);
+      expect(checkDuplicate(inputFor(inv.id)).candidates, inv.id).toEqual([]);
+    }
   });
 });
 

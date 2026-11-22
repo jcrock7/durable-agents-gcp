@@ -1,10 +1,10 @@
-/** "0.4s", "35s", "2m 05s", "3h 12m". */
+/** "0.4 sec", "35 sec", "2 min 05 sec", "3 hr 12 min": the words the rest of the portal uses. */
 export function secs(ms: number): string {
   const s = ms / 1000;
-  if (s < 10) return `${s.toFixed(1)}s`;
-  if (s < 60) return `${Math.round(s)}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, "0")}s`;
-  return `${Math.floor(s / 3600)}h ${Math.round((s % 3600) / 60)}m`;
+  if (s < 10) return `${s.toFixed(1)} sec`;
+  if (s < 60) return `${Math.round(s)} sec`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, "0")} sec`;
+  return `${Math.floor(s / 3600)} hr ${Math.round((s % 3600) / 60)} min`;
 }
 
 /** "00:41" (or "1:02:05") from the run start. */

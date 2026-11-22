@@ -18,6 +18,8 @@ export interface LiveHook {
   setPaused: (p: boolean) => void;
   position: number;
   duration: number;
+  /** Replay only: how long the run really took, start to finish (ms). */
+  realDuration: number;
   seek: (ms: number) => void;
   waited?: ReplayFrame["waited"];
   error?: string;
@@ -127,6 +129,7 @@ export function useLive(workflowId: string, graph: LiveGraph | undefined): LiveH
     },
     position,
     duration,
+    realDuration: frames.length ? frames.at(-1)!.real - frames[0]!.real : 0,
     seek: (ms) => setPosition(Math.max(0, Math.min(duration, ms))),
     waited: recentWait,
     error,

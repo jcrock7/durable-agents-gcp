@@ -1,5 +1,8 @@
 // The workflow graph the Live Run view draws, per agent. Each node lists the activities and
-// timeline entries (resolve.workflow.ts step names) that belong to it.
+// timeline entries (resolve.workflow.ts step names) that belong to it. Clock figures (review window,
+// reminder and escalation days) are never written here: withSchedule adds them from the agent's config,
+// which the API serves.
+import type { Agent } from "../api.js";
 
 export interface GraphNode {
   id: string;
@@ -10,7 +13,7 @@ export interface GraphNode {
   timeline: string[];
   /** Usage step names (CaseState.usage[].step) billed to this node. */
   usage?: string[];
-  /** What the node is when idle, under its label ("rule", "policy", "human · ≤7d"). */
+  /** What the node is when idle, under its label ("Rule", "Policy", "Person · up to 7 days"). */
   hint?: string;
   gate?: true;
 }
@@ -24,28 +27,38 @@ export interface LiveGraph {
 export const LIVE_GRAPHS: Record<string, LiveGraph> = {
   "invoice-exception-resolver": {
     nodes: [
-      { id: "match", label: "Match", activities: ["runMatch"], timeline: ["Match"], hint: "rule" },
-      { id: "read", label: "Read invoice", activities: ["readInvoice"], timeline: ["Read invoice PDF"], usage: ["read invoice"] },
-      { id: "evidence", label: "Gather evidence", activities: ["gatherEvidence"], timeline: ["Gather evidence"], usage: ["gather evidence"] },
+      { id: "match", label: "Match", activities: ["runMatch"], timeline: ["Match"], hint: "Rule" },
+      { id: "read", label: "Read Invoice", activities: ["readInvoice"], timeline: ["Read invoice PDF"], usage: ["read invoice"] },
+      { id: "evidence", label: "Gather Evidence", activities: ["gatherEvidence"], timeline: ["Gather evidence"], usage: ["gather evidence"] },
       { id: "propose", label: "Propose", activities: ["proposeResolution", "computeAdjustment"], timeline: ["Propose resolution", "Revise proposal"], usage: ["propose", "revise proposal"] },
-      { id: "route", label: "Route", activities: [], timeline: ["Route"], hint: "policy" },
-      { id: "gate", label: "Review gate", activities: [], timeline: ["Waiting for approval", "Approved", "Sent back", "Escalated by reviewer"], hint: "human · ≤7d", gate: true },
+      { id: "route", label: "Route", activities: [], timeline: ["Route"], hint: "Policy" },
+      { id: "gate", label: "Review Gate", activities: [], timeline: ["Waiting for approval", "Approved", "Sent back", "Escalated by reviewer"], hint: "Person", gate: true },
       {
         id: "finish",
         label: "Draft → Post → Confirm",
         activities: ["draftMessage", "queueMessage", "postResolution", "confirmInvoice"],
         timeline: ["Message queued", "Post resolution", "Confirm"],
         usage: ["draft message"],
-        hint: "erp-write",
+        hint: "ERP Write",
       },
     ],
     branch: {
       from: "match",
-      label: "if no goods receipt",
-      node: { id: "hold", label: "Hold for GR", activities: [], timeline: ["Waiting for receipt", "Receipt found", "Reminder *"], hint: "daily re-match · remind · escalate @ 3d" },
+      label: "If No Goods Receipt",
+      node: { id: "hold", label: "Hold for Goods Receipt", activities: [], timeline: ["Waiting for receipt", "Receipt found", "Reminder *"], hint: "Daily re-check" },
     },
   },
 };
+
+const days = (ns: readonly number[]) => (ns.length > 1 ? `${ns.slice(0, -1).join(", ")} and ${ns.at(-1)}` : String(ns[0] ?? ""));
+
+/** The graph with the agent's configured clocks in its hints: the review window and the receipt wait. */
+export function withSchedule(g: LiveGraph | undefined, schedule: Agent["schedule"] | undefined): LiveGraph | undefined {
+  if (!g || !schedule) return g;
+  const hint = (n: GraphNode): GraphNode =>
+    n.gate ? { ...n, hint: `Person · up to ${schedule.reviewDays} days` } : n.id === "hold" && schedule.receipt ? { ...n, hint: `Daily re-check · reminders on days ${days(schedule.receipt.reminderDays)} · escalates on day ${schedule.receipt.escalateDays}` } : n;
+  return { nodes: g.nodes.map(hint), ...(g.branch ? { branch: { ...g.branch, node: hint(g.branch.node) } } : {}) };
+}
 
 export const allNodes = (g: LiveGraph): GraphNode[] => [...g.nodes, ...(g.branch ? [g.branch.node] : [])];
 

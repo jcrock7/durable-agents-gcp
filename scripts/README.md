@@ -4,6 +4,7 @@ Folders are named for **where and how often** you run them. The full order, with
 
 | Folder | When | Scripts, in the order you run them |
 |---|---|---|
+| [`dev-env/`](dev-env/) | Your PC: workstation setup (Windows + WSL tools, prompt, shell config). Re-run any time to check or update | `setup-windows.ps1` (runs `setup-wsl.sh` too), `-Check` to report only; versions in `versions.env`. See [the setup guide](../docs/Windows%20Development%20Environment%20Setup.md#0-automated-setup-run-this-first) |
 | [`local/`](local/) | Your PC: once to set up, then each k3d session | `bootstrap-wsl.sh` → `verify-tools.sh` → `install-git-hooks.sh` (once); `k3d-up.sh` → `apply-k8s.sh` → `k3d-down.sh` (each session) |
 | [`gcp/`](gcp/) | **Once per GCP project** (re-run to change settings) | `cost-guardrails.sh` (always first) → `foundation.sh` |
 | [`gke/`](gke/) | **Each GKE session** | `up.sh` → `apply-k8s.sh` → `down.sh` (which runs `check-orphans.sh`) |

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SheetHead } from "./sheet.js";
 import { usePoll, type Agent, type Me, type Mission } from "./api.js";
 import { AgentView } from "./AgentView.js";
 import { CaseTable } from "./CaseTable.js";
@@ -209,14 +210,15 @@ export function App() {
         <div id="content" tabIndex={-1} className="content">
         {route.view === "overview" && (
           <main className="page">
-            <h1 className="sr">Overview</h1>
             <Overview mission={mission.data} agents={list} health={route.health ?? false} onNav={nav} />
           </main>
         )}
         {(route.view === "cases" || route.view === "needs") && (
           <main className="page">
-            <h1 className="sr">{pageName}</h1>
-            <CaseTable key={route.view} agents={list} initial={route.view === "needs" ? "needs" : "open"} />
+            <div className="sheet">
+              <SheetHead title={pageName} prepared={route.view === "needs" ? "Cases from every agent that wait on a person" : "Cases from every agent"} />
+              <CaseTable key={route.view} agents={list} initial={route.view === "needs" ? "needs" : "open"} />
+            </div>
           </main>
         )}
         {route.view === "agent" && agent && (
@@ -224,7 +226,7 @@ export function App() {
         )}
         {route.view === "agent" && !agent && agents.data && (
           <div className="page">
-            <div className="panel empty">No agent called “{route.agent}”.</div>
+            <div className="sheet empty">No agent called “{route.agent}”.</div>
           </div>
         )}
 

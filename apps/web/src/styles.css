@@ -819,3 +819,4 @@ th { font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0;
 /* Drift found by the documenter: status markers keep to their one job. */
 .tag.info { --m: var(--bar); }
 .override-mark { color: var(--text-2); }
+.dq-what b span { font-size: inherit; color: inherit; }

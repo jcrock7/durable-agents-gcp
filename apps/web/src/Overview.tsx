@@ -135,11 +135,7 @@ export function Overview(props: { mission?: Mission; agents: Agent[]; health?: b
                           {cents(Math.abs(r.amountCents))}
                           <Mark k="recorded" />
                         </>
-                      ) : (
-                        <>
-                          –<Mark k="absent" />
-                        </>
-                      )}
+                      ) : null}
                     </span>
                     <a className="btn primary" href={caseHash(r.agentId, r.workflowId)}>
                       Review<span className="sr"> Case {r.ref}</span>

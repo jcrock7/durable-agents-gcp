@@ -5,13 +5,13 @@ import { useTabs } from "./tabs.js";
 type Tab = "calls" | "skills" | "cost" | "guardrails";
 
 /** The audit trail for one case: tool calls, skills, cost and guardrails (ADR-0021). The step strip on the case page replaces the old timeline tab. */
-export function Inspector({ state }: { state: AnyState }) {
+export function Inspector({ state, sourcesLabel = "Sources", caseWord = "Case" }: { state: AnyState; sourcesLabel?: string; caseWord?: string }) {
   const [tab, setTab] = useState<Tab>("calls");
   const [call, setCall] = useState(0);
   const calls: AnyState[] = state.toolCalls ?? [];
   const usage: AnyState[] = state.usage ?? [];
   const skills = Object.entries((state.skillVersions ?? {}) as Record<string, string>);
-  const guards = guardrails(state);
+  const guards = guardrails(state, caseWord.toLowerCase(), sourcesLabel.toLowerCase());
   const tabs: Array<[Tab, string]> = [
     ["calls", `Tool Calls ${calls.length}`],
     ["skills", `Skills ${skills.length}`],
@@ -72,7 +72,7 @@ export function Inspector({ state }: { state: AnyState }) {
                 </div>
               )}
               <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-                Arguments are recorded for every call; the case keeps only the size of each result. Results the agent used as evidence are kept under Evidence (cut at a length limit), and what each step returned is in the run’s engine history: Replay Run, then Engine History.
+                Arguments are recorded for every call; the case keeps only the size of each result. Results the agent used as {sourcesLabel.toLowerCase()} are kept under {sourcesLabel} (cut at a length limit), and what each step returned is in the run’s engine history: Replay Run, then Engine History.
               </p>
             </div>
           ))}
@@ -137,13 +137,15 @@ export function Inspector({ state }: { state: AnyState }) {
   );
 }
 
-function guardrails(state: AnyState): Array<[string, string, string]> {
+function guardrails(state: AnyState, unit: string, sources: string): Array<[string, string, string]> {
   const out: Array<[string, string, string]> = [];
-  if (state.invoice && !state.invoice.containsInstructions) out.push(["Passed", "ok", "Invoice text screened for instructions addressed to the system."]);
-  if (state.invoice?.containsInstructions) out.push(["Blocked", "warn", `Instructions found in the invoice: ${state.invoice.instructionsSummary || "unspecified"}`]);
-  if (state.status === "blocked") out.push(["Blocked", "warn", (state.reasons ?? []).join("; ")]);
+  // The screened document is the agent's own record (a field of its state); the words around it are neutral.
+  const summary: string | undefined = state.invoice?.instructionsSummary;
+  if (state.invoice && !state.invoice.containsInstructions) out.push(["Passed", "ok", `${titleCase(unit)} text screened for instructions addressed to the system.`]);
+  if (state.invoice?.containsInstructions) out.push(["Blocked", "crit", `Instructions found in the ${unit}: ${summary || "unspecified"}`]);
+  if (state.status === "blocked") out.push(["Blocked", "crit", (state.reasons ?? []).join("; ")]);
   for (const c of state.toolCalls ?? []) if (c.outcome === "refused") out.push(["Allow-list", "idle", `${c.ref} refused (${c.caller}).`]);
   for (const r of state.route?.reasons ?? []) out.push([r === "possible fraud" ? "Fraud" : "Rule", r === "possible fraud" ? "warn" : "info", r]);
-  if (state.citationsValid === false) out.push(["Citations", "warn", "The proposal cites evidence that does not exist."]);
+  if (state.citationsValid === false) out.push(["Citations", "warn", `The proposal cites ${sources} that does not exist.`]);
   return out;
 }

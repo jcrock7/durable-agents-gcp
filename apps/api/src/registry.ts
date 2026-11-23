@@ -2,6 +2,43 @@
 // the rest are listed as "Coming soon".
 import { agentConfig as invoiceConfig } from "@agents/invoice-exception-resolver/config";
 
+/**
+ * The words an agent's own screens use (docs/design/agent-portal/agent-screen-guidelines.md).
+ * Anything left out falls back to the neutral word; screens that list several agents use neutral words only.
+ */
+export interface Vocabulary {
+  /** One unit of work, singular and plural: "Invoice", "Brief", "Incident". */
+  case: string;
+  cases: string;
+  /** What the agent gathered to support its proposal, and one item of it. */
+  sources: string;
+  source: string;
+  /** Prefix of a citation tag: E1, S1, F1. */
+  citePrefix: string;
+  /** The ruled table of the case's figures. */
+  figures: string;
+  /** Where a rule stopped the agent or a person overrode one. */
+  ruleStops: string;
+  /** What the agent proposes. */
+  proposal: string;
+  /** The approve button when no write-specific label applies. */
+  approve: string;
+  /** The rule a ◇ mark checks a figure against. */
+  ruleName: string;
+  /** Who takes an escalated case. */
+  specialist: string;
+  /** The other party on a case (a vendor, a service owner), when there is one. */
+  counterparty: string;
+  searchHint: string;
+  sendBackHint: string;
+  escalateHint: string;
+}
+
+/** Which shared blocks an agent's case page shows, in order, in the main column and the margin column. */
+export interface Layout {
+  case: { main: string[]; margin: string[] };
+}
+
 export interface AgentEntry {
   id: string;
   name: string;
@@ -34,6 +71,10 @@ export interface AgentEntry {
   guardrails?: string[];
   /** The approval rules, for explaining why a person is needed. */
   approval?: { amountCents: number; alwaysFor: string[] };
+  /** This agent's words for the shared components; the rest fall back to neutral words. */
+  vocabulary?: Partial<Vocabulary>;
+  /** The page recipe for this agent's case page, built from shared blocks only. */
+  layout?: Layout;
 }
 
 export const AGENTS: AgentEntry[] = [
@@ -60,6 +101,15 @@ export const AGENTS: AgentEntry[] = [
     evals: { rate: "97.9%", passed: 92, total: 94, source: "agents/general/invoice-exception-resolver/evals/RESULTS.md" },
     schedule: { reviewDays: invoiceConfig.review.days, receipt: { reminderDays: [...invoiceConfig.wait.reminderDays], escalateDays: invoiceConfig.wait.escalateDays } },
     approval: { amountCents: invoiceConfig.approval.amountCents, alwaysFor: [...invoiceConfig.approval.alwaysFor] },
+    vocabulary: {
+      case: "Invoice", cases: "Invoices", sources: "Evidence", source: "Evidence Item", citePrefix: "E",
+      figures: "Schedule A", ruleStops: "Exceptions Noted", proposal: "Proposed Resolution", approve: "Approve and Post to ERP",
+      ruleName: "the approval line", specialist: "AP Specialist", counterparty: "Vendor",
+      searchHint: "Search by case or vendor",
+      sendBackHint: "Tell the agent what to do instead, e.g. ask the vendor for a credit memo",
+      escalateHint: "What the specialist should check, e.g. the buyer should confirm this price with the vendor",
+    },
+    layout: { case: { main: ["figures", "proposal", "sources", "message"], margin: ["legend", "stops", "run", "recheck"] } },
   },
   {
     id: "cve-remediator",
@@ -71,6 +121,11 @@ export const AGENTS: AgentEntry[] = [
     built: false,
     tools: ["github", "osv", "sandbox-runner"],
     models: "fast · smart",
+    vocabulary: {
+      case: "Vulnerability", cases: "Vulnerabilities", sources: "Findings", source: "Finding", citePrefix: "F",
+      figures: "Exposure", ruleStops: "Policy Blocks", proposal: "Proposed Patch", approve: "Approve and Open PR",
+      ruleName: "the severity threshold", specialist: "Security Engineer", counterparty: "Service Owner",
+    },
   },
   {
     id: "audit-evidence-collector",
@@ -104,6 +159,11 @@ export const AGENTS: AgentEntry[] = [
     built: false,
     tools: ["kubernetes", "prometheus", "grafana"],
     models: "fast · smart",
+    vocabulary: {
+      case: "Incident", cases: "Incidents", sources: "Signals", source: "Signal", citePrefix: "G",
+      figures: "Impact", ruleStops: "Guardrail Stops", proposal: "Proposed Fix", approve: "Approve and Run",
+      ruleName: "the change window", specialist: "On-call Engineer", counterparty: "Service",
+    },
   },
   {
     id: "research-summarize",
@@ -124,6 +184,13 @@ export const AGENTS: AgentEntry[] = [
     ],
     tools: ["wikipedia (HTTP allow-list)"],
     models: "fast · smart",
+    vocabulary: {
+      case: "Brief", cases: "Briefs", sources: "Sources", source: "Source", citePrefix: "S",
+      figures: "Coverage", ruleStops: "Held for Review", proposal: "Draft Brief", approve: "Approve Brief",
+      ruleName: "the citation rule", searchHint: "Search by case or question",
+      sendBackHint: "Tell the agent what to change in the brief",
+    },
+    layout: { case: { main: ["proposal", "sources"], margin: ["legend", "figures", "run"] } },
   },
 ];
 

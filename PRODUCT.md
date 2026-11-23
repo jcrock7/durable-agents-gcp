@@ -66,7 +66,7 @@ Undecided:
 
 - **A person approves writes, or a published rule does.** Nothing an agent proposes changes a system of record unless a person approves it or a published workflow rule permits it, and the case page names which for every write. Holding an invoice to wait for a goods receipt needs a person. Rules permit three kinds of write without one: a protective hold when a case ends with a specialist (blocked, escalated or expired), so the invoice is not paid while a person takes over; a resolution, and its message, that no approval rule sends to a person (under the approval line, not an action that always needs a person, no policy conflict, valid citations); and clearing an invoice that matches on re-check. The page always states what approving, sending back or escalating will do.
 - **No invented figures.** Every number comes from a real run or is labelled as configured. Synthetic data is disclosed on every page.
-- **Plain business language.** Labels and explanations are written for finance and operations leaders; technical detail sits behind a drill-down, where it must be exact enough for a technical leader.
+- **Plain business language, in each agent's domain.** Agents span business domains (accounts payable, research, security, IT audit, cloud cost, incident response). Each agent's screens use the words of its domain's leaders, and screens that list several agents use neutral words; the look is the same everywhere ([Agent screen guidelines](docs/design/agent-portal/agent-screen-guidelines.md)). Technical detail sits behind a drill-down, where it must be exact enough for a technical leader.
 
 ## Evidence on Hand
 

@@ -1,6 +1,6 @@
 # Agent portal design
 
-The UI design for the agent portal, locked in [ADR-0021](../../adr/0021-agent-portal-ui.md). The mocks use sample data only. This folder holds what the build needs: the layout, the content of each region, the theme tokens ([`tokens.css`](tokens.css)) and the avatars ([`avatars/`](avatars/)).
+The UI design for the agent portal, locked in [ADR-0021](../../adr/0021-agent-portal-ui.md). For how every agent's screens share one look while speaking their own domain's language, see [Agent screen guidelines](agent-screen-guidelines.md). The mocks use sample data only. This folder holds what the build needs: the layout, the content of each region, the theme tokens ([`tokens.css`](tokens.css)) and the avatars ([`avatars/`](avatars/)).
 
 ## Layout
 

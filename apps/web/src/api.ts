@@ -1,3 +1,4 @@
+import type { Layout, Vocabulary } from "./vocab.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface Agent {
@@ -17,6 +18,9 @@ export interface Agent {
   schedule?: { reviewDays: number; receipt?: { reminderDays: number[]; escalateDays: number } };
   approval?: { amountCents: number; alwaysFor: string[] };
   guardrails?: string[];
+  /** This agent's words and case-page recipe, from the agent registry. */
+  vocabulary?: Partial<Vocabulary>;
+  layout?: Layout;
   status: "coming_soon" | "needs_review" | "active" | "idle";
   runs24h: number | null;
   needsPerson: number;

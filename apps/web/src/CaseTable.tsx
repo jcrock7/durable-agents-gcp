@@ -1,4 +1,5 @@
 import { useEffect, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { vocab } from "./vocab.js";
 import { caseHash, hashQuery, liveHash, setHashQuery } from "./routes.js";
 import { useTabs } from "./tabs.js";
 import { ago, caseGroup, caseTag, cents, costText, GROUP_LABEL, OPEN_GROUPS, plain, titleCase, usd, usePoll, type Agent, type CaseGroup, type CasePage, type CaseSummary } from "./api.js";
@@ -113,7 +114,7 @@ export function CaseTable(props: { agentId?: string; agents?: Agent[]; initial?:
         <label htmlFor="case-search" className="sr">
           Search cases
         </label>
-        <input id="case-search" type="search" className="search" placeholder={props.agentId === "research-summarize" ? "Search by case" : "Search by case or vendor"} value={typed} onChange={(e) => setTyped(e.target.value)} />
+        <input id="case-search" type="search" className="search" placeholder={vocab(props.agents?.find((a) => a.id === props.agentId)).searchHint} value={typed} onChange={(e) => setTyped(e.target.value)} />
         <label className="sort-pick">
           <span>Sort</span>
           <select
@@ -133,7 +134,7 @@ export function CaseTable(props: { agentId?: string; agents?: Agent[]; initial?:
         {props.action}
       </div>
       {page.error && !shown && <div className="error">Could not load cases: {page.error}</div>}
-      <div className="panel case-panel" style={{ padding: "6px 22px 10px" }} {...t.panel}>
+      <div className="panel case-panel" {...t.panel}>
         {!shown ? (
           <div className="empty">Loading cases…</div>
         ) : rows.length === 0 ? (
